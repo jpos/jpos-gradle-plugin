@@ -176,7 +176,7 @@ public class JPOSPlugin implements Plugin<Project> {
         targetConfiguration.put("distDir", "src/dist");
         targetConfiguration.put("jarname", targetConfiguration.get("archiveJarName"));
 
-        File cfgFile = new File (project.getProjectDir(), String.format("%s.properties", target));
+        File cfgFile = new File (project.getRootDir(), String.format("%s.properties", target));
         if (cfgFile.exists()) {
             try (FileInputStream fis = new FileInputStream(cfgFile)) {
                 Properties props = new Properties();
