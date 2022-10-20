@@ -28,9 +28,11 @@ import org.gradle.api.logging.Logging;
 import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginExtension;
+import org.gradle.api.tasks.Exec;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.Sync;
 import org.gradle.api.tasks.bundling.*;
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -62,6 +64,7 @@ public class JPOSPlugin implements Plugin<Project> {
                 createDistTask(project, targetConfiguration, "zip", Zip.class);
                 createDistNcTask(project, targetConfiguration, "distnc", Tar.class);
                 createDistNcTask(project, targetConfiguration, "zipnc", Zip.class);
+                createRunTask(project, targetConfiguration);
             } catch (IOException e) {
                 LOGGER.error(e.getMessage());
                 e.printStackTrace(System.err);
@@ -87,6 +90,23 @@ public class JPOSPlugin implements Plugin<Project> {
         installApp.into(new File(targetConfiguration.get("installDir")));
 
         return installApp;
+    }
+
+    private Exec createRunTask(Project project, Map<String,String> targetConfiguration) {
+        var run = project.getTasks().create("run", Exec.class);
+        run.setDescription("Runs a jPOS based application.");
+        run.setGroup(GROUP_NAME);
+        run.dependsOn(
+                project.getTasks().getByName("installApp")
+        );
+        run.workingDir(new File(targetConfiguration.get("installDir")));
+        if (DefaultNativePlatform.getCurrentOperatingSystem().isWindows()) {
+            run.commandLine("bin/q2.bat");
+        } else {
+            run.commandLine("./bin/q2");
+        }
+
+        return run;
     }
 
     private void createBuildTimestampTask (Project project) {
