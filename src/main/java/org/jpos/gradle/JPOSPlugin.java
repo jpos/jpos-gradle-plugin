@@ -20,7 +20,6 @@ package org.jpos.gradle;
 
 import org.gradle.api.Project;
 import org.gradle.api.Plugin;
-import org.gradle.api.attributes.LibraryElements;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.java.archives.Attributes;
 import org.gradle.api.logging.Logger;
@@ -88,7 +87,7 @@ public class JPOSPlugin implements Plugin<Project> {
           webapps(project)
         );
         installApp.into(new File(targetConfiguration.get("installDir")));
-
+        installApp.getOutputs().upToDateWhen(task -> false);
         return installApp;
     }
 
@@ -144,6 +143,7 @@ public class JPOSPlugin implements Plugin<Project> {
             ((Tar) dist).setCompression(Compression.GZIP);
             dist.getArchiveExtension().set("tar.gz");
         }
+        dist.getOutputs().upToDateWhen(task -> false);
     }
 
     private void createDistNcTask(Project project, Map<String,String> targetConfiguration, String taskName, Class<? extends AbstractArchiveTask> clazz) {
@@ -164,6 +164,7 @@ public class JPOSPlugin implements Plugin<Project> {
             dist.getArchiveExtension().set("tar.gz");
         }
         dist.getArchiveAppendix().set("nc");
+        dist.getOutputs().upToDateWhen(task -> false);
     }
 
 
@@ -171,7 +172,7 @@ public class JPOSPlugin implements Plugin<Project> {
         Map<String,String> targetConfiguration = new HashMap<>();
         targetConfiguration.put("archiveJarName", String.format("%s-%s.jar", project.getName(), project.getVersion()));
         targetConfiguration.put("archiveWarName", String.format("%s-%s.war", project.getName(), project.getVersion()));
-        targetConfiguration.put("installDir", String.format("%s/install/%s", project.getBuildDir().toString(), project.getName()));
+        targetConfiguration.put("installDir", String.format("%s/install/%s", project.getBuildDir(), project.getName()));
         targetConfiguration.put("distDir", "src/dist");
         targetConfiguration.put("jarname", targetConfiguration.get("archiveJarName"));
 
