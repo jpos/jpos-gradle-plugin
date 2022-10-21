@@ -20,6 +20,7 @@ package org.jpos.gradle;
 
 import org.gradle.api.Project;
 import org.gradle.api.Plugin;
+import org.gradle.api.Task;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.java.archives.Attributes;
 import org.gradle.api.logging.Logger;
@@ -33,9 +34,11 @@ import org.gradle.api.tasks.Sync;
 import org.gradle.api.tasks.bundling.*;
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 
+import java.awt.*;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.Map;
@@ -64,6 +67,7 @@ public class JPOSPlugin implements Plugin<Project> {
                 createDistNcTask(project, targetConfiguration, "distnc", Tar.class);
                 createDistNcTask(project, targetConfiguration, "zipnc", Zip.class);
                 createRunTask(project, targetConfiguration);
+                createViewTestsTask(project, targetConfiguration);
             } catch (IOException e) {
                 LOGGER.error(e.getMessage());
                 e.printStackTrace(System.err);
@@ -297,6 +301,22 @@ public class JPOSPlugin implements Plugin<Project> {
           .filter(f -> f.getPath().contains("resources/main"))
           .findFirst()
           .orElse(new File(project.getBuildDir(), "resources/main"));
+    }
+
+    private Task createViewTestsTask(Project project, Map<String, String> targetConfiguration) {
+        var run = project.getTasks().create("viewTests");
+        run.setDescription("Open a browser with the tests results");
+        run.setGroup(GROUP_NAME);
+        run.doLast(task -> {
+            try {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    Desktop.getDesktop().browse(Paths.get(project.getBuildDir().getPath(), "reports/tests/test", "index.html").toUri());
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Can't open test results file", e);
+            }
+        });
+        return run;
     }
 
 }
