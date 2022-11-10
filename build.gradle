@@ -2,10 +2,13 @@ plugins {
     id 'java-gradle-plugin'
     id 'maven-publish'
     id 'idea'
+    id "com.gradle.plugin-publish" version "1.0.0"
 }
 
 group 'org.jpos'
-version '0.0.1-SNAPSHOT'
+version '0.0.1'
+
+def isSnapshot = version.contains("SNAPSHOT")
 
 repositories {
     mavenCentral()
@@ -16,12 +19,19 @@ dependencies {
     implementation 'org.eclipse.jgit:org.eclipse.jgit:6.3.0.202209071007-r'
 }
 
+
+pluginBundle {
+    website = 'http://jpos.org'
+    vcsUrl = 'https://github.com/jpos/jpos-gradle-plugin'
+    tags = ['jpos', 'iso8583']     
+}
+
 gradlePlugin {
     plugins {
         jposapp {
             id = 'org.jpos.jposapp'
             displayName = 'jPOS App Gradle Plugin'
-            description = 'Implements jPOS conventions'
+            description = 'Implements jPOS app conventions'
             implementationClass = 'org.jpos.gradle.JPOSPlugin'
         }
     }
@@ -52,10 +62,13 @@ tasks.named('test') {
 
 publishing {
     repositories {
-        maven {
-            mavenLocal();
-            url = 'file:///opt/local/maven'
+	if (isSnapshot) {
+	    maven {
+		mavenLocal();
+		url = 'file:///opt/local/maven'
+	    }
         }
     }
 }
+
 
