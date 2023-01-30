@@ -53,8 +53,7 @@ public class JPOSPlugin implements Plugin<Project> {
         String target = project.hasProperty("target") ? (String) project.getProperties().get("target") : "devel";
         ExtensionContainer ext = project.getExtensions();
         ext.add("target", target);
-
-        project.getGradle().projectsEvaluated(gradle -> {
+        project.getGradle().afterProject (gradle -> {
             try {
                 Map<String,String> targetConfiguration = createTargetConfiguration(project, target);
                 ext.add("targetConfiguration", new HashMap<String,String>());
@@ -116,7 +115,7 @@ public class JPOSPlugin implements Plugin<Project> {
         var task = project.getTasks().create(
           "createBuildTimestamp",
           BuildTimestampTask.class,
-          new File(getResourcesBuildDir(project), "buildinfo.properties")
+            new File(getResourcesBuildDir(project), "buildinfo.properties")
         );
         task.setDescription("Creates jPOS buildinfo.properties resource.");
     }
@@ -258,7 +257,7 @@ public class JPOSPlugin implements Plugin<Project> {
 
     private CopySpec depJars (Project project) {
         return project.copySpec(copy -> {
-            copy.from(project.getConfigurations().getByName("runtimeClasspath"))
+            copy.from(project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME))
             .into("lib");
         });
     }
@@ -283,7 +282,7 @@ public class JPOSPlugin implements Plugin<Project> {
         attr.put ("Implementation-Version", project.getVersion());
         attr.put ("Main-Class", "org.jpos.q2.Q2");
         attr.put ("Class-Path",
-          project.getConfigurations().getByName("runtimeClasspath")
+          project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME)
             .getFiles()
             .stream()
             .map(file -> "lib/" + file.getName())
@@ -295,8 +294,7 @@ public class JPOSPlugin implements Plugin<Project> {
         JavaPluginExtension plugin = project.getExtensions().getByType(JavaPluginExtension.class);
         SourceSet sourceSet = plugin.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
 
-        return sourceSet.getRuntimeClasspath()
-          .getFiles()
+        return sourceSet.getRuntimeClasspath().getFiles()
           .stream()
           .filter(f -> f.getPath().contains("resources/main"))
           .findFirst()
