@@ -1,12 +1,5 @@
 # Enable auto-env through the sdkman_auto_env config
 # Add key=value pairs of SDKs to use below
-# java=17.ea.7.lm-open
-# java=16.0.1-open
-# java=22.1.0.r17-grl
-# java=18.0.2-amzn
-
-# java=19-open
-# java=17.0.4-amzn
 java=11.0.16-amzn
-gradle=7.5.1
+gradle=7.6
 
