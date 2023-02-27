@@ -141,6 +141,8 @@ public class JPOSPlugin implements Plugin<Project> {
           mainJar(project),
           depJars(project),
           webapps(project)
+        ).into(
+          String.format("%s-%s", project.getName(), project.getVersion())
         );
         if (clazz == Tar.class) {
             ((Tar) dist).setCompression(Compression.GZIP);
