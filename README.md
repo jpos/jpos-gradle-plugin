@@ -4,7 +4,7 @@ In order to use the jPOS APP Plugin
 
 ```
 plugins {
-    id 'org.jpos.jposapp' version '0.0.1-SNAPSHOT'
+    id 'org.jpos.jposapp' version '0.0.3'
 }
 ```
 
@@ -18,3 +18,6 @@ pluginManagement {
     }
 }
 ```
+
+See [Gradle Plugin Repository](https://plugins.gradle.org/plugin/org.jpos.jposapp) for latest version.
+
