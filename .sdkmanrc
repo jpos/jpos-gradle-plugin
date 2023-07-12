@@ -1,5 +1,2 @@
-# Enable auto-env through the sdkman_auto_env config
-# Add key=value pairs of SDKs to use below
+gradle=8.2
 java=11.0.16-amzn
-gradle=7.6
-
