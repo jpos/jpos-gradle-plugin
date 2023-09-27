@@ -275,9 +275,12 @@ public class JPOSPlugin implements Plugin<Project> {
     @SuppressWarnings("unchecked")
     private void configureJar (Project project) {
         project.getTasks().getByName("jar").dependsOn(
-          project.getTasks().getByName("createBuildTimestamp"),
-          project.getTasks().getByName("createGitRevision")
+            project.getTasks().getByName("createBuildTimestamp")
         );
+        boolean ignoreGit = project.hasProperty("ignoreGit") && Boolean.parseBoolean((String) project.property("ignoreGit")); 
+        if (!ignoreGit) {
+            project.getTasks().getByName("jar").dependsOn(project.getTasks().getByName("createGitRevision")); 
+        }
         Attributes attr = ((Jar)project.getTasks().getByName("jar")).getManifest().getAttributes();
 
         attr.put ("Implementation-Title",  project.getName());
