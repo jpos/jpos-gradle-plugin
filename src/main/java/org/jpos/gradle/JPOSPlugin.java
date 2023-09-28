@@ -18,8 +18,8 @@
 
 package org.jpos.gradle;
 
-import org.gradle.api.Project;
 import org.gradle.api.Plugin;
+import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.java.archives.Attributes;
@@ -36,72 +36,90 @@ import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 
 import java.awt.*;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.Properties;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 public class JPOSPlugin implements Plugin<Project> {
     private static final Logger LOGGER = Logging.getLogger(JPOSPlugin.class);
-    private static String GROUP_NAME = "jPOS";
+    private static final String GROUP_NAME = "jPOS";
 
     public void apply(Project project) {
-        project.getPluginManager().apply(JavaPlugin.class);
-        String target = project.hasProperty("target") ? (String) project.getProperties().get("target") : "devel";
-        ExtensionContainer ext = project.getExtensions();
-        ext.add("target", target);
-        project.getGradle().afterProject (gradle -> {
-            try {
-                Map<String,String> targetConfiguration = createTargetConfiguration(project, target);
-                ext.add("targetConfiguration", new HashMap<String,String>());
-                createBuildTimestampTask(project);
-                createGitRevisionTask(project);
-                configureJar (project);
-                createInstallAppTask(project, targetConfiguration);
-                createDistTask(project, targetConfiguration, "dist", Tar.class);
-                createDistTask(project, targetConfiguration, "zip", Zip.class);
-                createDistNcTask(project, targetConfiguration, "distnc", Tar.class);
-                createDistNcTask(project, targetConfiguration, "zipnc", Zip.class);
-                createRunTask(project, targetConfiguration);
-                createViewTestsTask(project, targetConfiguration);
-            } catch (IOException e) {
-                LOGGER.error(e.getMessage());
-                e.printStackTrace(System.err);
-                System.exit(1);
-            }
+
+        // we only apply 'jpos-plugin' if we have the 'JavaPlugin'
+        project.getPlugins().withType(JavaPlugin.class, plugin -> {
+
+            var extension = project.getExtensions().create("jpos", JPOSPluginExtension.class);
+            extension.initConventions(project);
+
+            ExtensionContainer ext = project.getExtensions();
+            ext.add("target", extension.getTarget().get());
+
+            var buildTimestampTask = createBuildTimestampTask(project);
+            var addGitRevisionTask = createGitRevisionTask(project);
+
+            // the build timestamp and git revision task are dependencies to the 'class' task
+            project.getTasks().named(JavaPlugin.CLASSES_TASK_NAME).configure(javaClasses -> {
+                if (extension.getAddBuildTime().get())
+                    javaClasses.dependsOn(buildTimestampTask);
+                if (extension.getAddGitRevision().get())
+                    javaClasses.dependsOn(addGitRevisionTask);
+            });
+
+            // after the evaluation of the project we add the tasks,
+            // we use this lifecycle event because we need the 'version' of the project
+            project.afterEvaluate(pr -> {
+                try {
+                    extension.loadFromProject(project);
+                    LOGGER.debug("Loaded config for the jpos plugin {} -  {}", pr.getName(), extension.asMap());
+                    configureJar(project, extension);
+                    createInstallAppTask(project, extension);
+                    createDistTask(project, extension, "dist", Tar.class);
+                    createDistTask(project, extension, "zip", Zip.class);
+                    createDistNcTask(project, extension, "distnc", Tar.class);
+                    createDistNcTask(project, extension, "zipnc", Zip.class);
+                    createRunTask(project, extension);
+                    createViewTestsTask(project, extension);
+                } catch (IOException e) {
+                    LOGGER.error(e.getMessage());
+                    e.printStackTrace(System.err);
+                    System.exit(1);
+                }
+            });
         });
+
+
     }
 
-    private Sync createInstallAppTask(Project project, Map<String,String> targetConfiguration) {
+    private Sync createInstallAppTask(Project project, JPOSPluginExtension targetConfiguration) {
         Sync installApp = project.getTasks().create("installApp", Sync.class);
         installApp.setDescription("Installs jPOS based application.");
-        installApp.setGroup (GROUP_NAME);
+        installApp.setGroup(GROUP_NAME);
         installApp.dependsOn(
-          project.getTasks().getByName("jar")
+                project.getTasks().getByName("jar")
         );
         installApp.with(
-          distFiltered(project, targetConfiguration),
-          distRaw(project, targetConfiguration),
-          mainJar(project),
-          depJars(project),
-          webapps(project)
+                distFiltered(project, targetConfiguration),
+                distRaw(project, targetConfiguration),
+                mainJar(project),
+                depJars(project),
+                webapps(project)
         );
-        installApp.into(new File(targetConfiguration.get("installDir")));
+        installApp.into(new File(targetConfiguration.getInstallDir().get()));
         installApp.getOutputs().upToDateWhen(task -> false);
         return installApp;
     }
 
-    private Exec createRunTask(Project project, Map<String,String> targetConfiguration) {
+    private Exec createRunTask(Project project, JPOSPluginExtension targetConfiguration) {
         var run = project.getTasks().create("run", Exec.class);
         run.setDescription("Runs a jPOS based application.");
         run.setGroup(GROUP_NAME);
         run.dependsOn(
                 project.getTasks().getByName("installApp")
         );
-        run.workingDir(new File(targetConfiguration.get("installDir")));
+        run.workingDir(new File(targetConfiguration.getInstallDir().get()));
         if (DefaultNativePlatform.getCurrentOperatingSystem().isWindows()) {
             run.commandLine("bin/q2.bat");
         } else {
@@ -111,38 +129,41 @@ public class JPOSPlugin implements Plugin<Project> {
         return run;
     }
 
-    private void createBuildTimestampTask (Project project) {
+    private BuildTimestampTask createBuildTimestampTask(Project project) {
         var task = project.getTasks().create(
-          "createBuildTimestamp",
-          BuildTimestampTask.class,
-            new File(getResourcesBuildDir(project), "buildinfo.properties")
+                "createBuildTimestamp",
+                BuildTimestampTask.class,
+                new File(getResourcesBuildDir(project), "buildinfo.properties")
         );
         task.setDescription("Creates jPOS buildinfo.properties resource.");
+        return task;
     }
-    private void createGitRevisionTask (Project project) {
+
+    private GitRevisionTask createGitRevisionTask(Project project) {
         var task = project.getTasks().create(
-          "createGitRevision",
-          GitRevisionTask.class,
-          new File(getResourcesBuildDir(project), "revision.properties")
+                "createGitRevision",
+                GitRevisionTask.class,
+                new File(getResourcesBuildDir(project), "revision.properties")
         );
         task.setDescription("Creates jPOS revision.properties resource.");
+        return task;
     }
-    
-    private void createDistTask(Project project, Map<String,String> targetConfiguration, String taskName, Class<? extends AbstractArchiveTask> clazz) {
+
+    private void createDistTask(Project project, JPOSPluginExtension targetConfiguration, String taskName, Class<? extends AbstractArchiveTask> clazz) {
         var dist = project.getTasks().create(taskName, clazz);
-        dist.setGroup (GROUP_NAME);
+        dist.setGroup(GROUP_NAME);
         dist.setDescription(String.format("Generates jPOS distribution (%s).", clazz.getSimpleName()));
         dist.dependsOn(
-          project.getTasks().getByName("jar")
+                project.getTasks().getByName("jar")
         );
         dist.with(
-          distFiltered(project, targetConfiguration),
-          distRaw(project, targetConfiguration),
-          mainJar(project),
-          depJars(project),
-          webapps(project)
+                distFiltered(project, targetConfiguration),
+                distRaw(project, targetConfiguration),
+                mainJar(project),
+                depJars(project),
+                webapps(project)
         ).into(
-          String.format("%s-%s", project.getName(), project.getVersion())
+                String.format("%s-%s", project.getName(), project.getVersion())
         );
         if (clazz == Tar.class) {
             ((Tar) dist).setCompression(Compression.GZIP);
@@ -151,18 +172,18 @@ public class JPOSPlugin implements Plugin<Project> {
         dist.getOutputs().upToDateWhen(task -> false);
     }
 
-    private void createDistNcTask(Project project, Map<String,String> targetConfiguration, String taskName, Class<? extends AbstractArchiveTask> clazz) {
+    private void createDistNcTask(Project project, JPOSPluginExtension targetConfiguration, String taskName, Class<? extends AbstractArchiveTask> clazz) {
         var dist = project.getTasks().create(taskName, clazz);
-        dist.setGroup (GROUP_NAME);
+        dist.setGroup(GROUP_NAME);
         dist.setDescription(String.format("Generates jPOS distribution without configuration (%s).", clazz.getSimpleName()));
         dist.dependsOn(
-          project.getTasks().getByName("jar")
+                project.getTasks().getByName("jar")
         );
         dist.with(
-          distBinFiltered(project, targetConfiguration),
-          mainJar(project),
-          depJars(project),
-          webapps(project)
+                distBinFiltered(project, targetConfiguration),
+                mainJar(project),
+                depJars(project),
+                webapps(project)
         );
         if (clazz == Tar.class) {
             ((Tar) dist).setCompression(Compression.GZIP);
@@ -173,137 +194,119 @@ public class JPOSPlugin implements Plugin<Project> {
     }
 
 
-    private Map<String,String> createTargetConfiguration (Project project, String target) throws IOException {
-        Map<String,String> targetConfiguration = new HashMap<>();
-        targetConfiguration.put("archiveJarName", String.format("%s-%s.jar", project.getName(), project.getVersion()));
-        targetConfiguration.put("archiveWarName", String.format("%s-%s.war", project.getName(), project.getVersion()));
-        targetConfiguration.put("installDir", String.format("%s/install/%s", project.getBuildDir(), project.getName()));
-        targetConfiguration.put("distDir", "src/dist");
-        targetConfiguration.put("jarname", targetConfiguration.get("archiveJarName"));
-
-        File cfgFile = new File (project.getRootDir(), String.format("%s.properties", target));
-        if (cfgFile.exists()) {
-            try (FileInputStream fis = new FileInputStream(cfgFile)) {
-                Properties props = new Properties();
-                props.load(fis);
-                props.forEach((k,v) -> {
-                    targetConfiguration.put((String)k, (String)v);
-                });
-            }
-        }
-        return targetConfiguration;
+    private CopySpec distFiltered(Project project, JPOSPluginExtension targetConfiguration) {
+        Map<String, Map<String, String>> hm = new HashMap<>();
+        hm.put("tokens", targetConfiguration.asMap());
+        File distDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get());
+        return project.copySpec(copy -> copy
+                .from(distDir)
+                .exclude(
+                        "cfg/*.lmk",
+                        "cfg/*.jks",
+                        "cfg/*.ks",
+                        "cfg/*.ser",
+                        "cfg/*.p12",
+                        "**/*.jpg",
+                        "**/*.gif",
+                        "**/*.png",
+                        "**/*.pdf",
+                        "**/*.ico",
+                        "**/*.war",
+                        "**/*.dat")
+                .filter(
+                        hm,
+                        org.apache.tools.ant.filters.ReplaceTokens.class
+                ));
     }
 
-    private CopySpec distFiltered (Project project, Map<String,String> targetConfiguration) {
-        Map<String,Map<String,String>> hm = new HashMap<>();
-        hm.put("tokens", targetConfiguration);
-        File distDir = new File(project.getProjectDir(), targetConfiguration.get("distDir"));
-        return project.copySpec(copy -> {
-            copy
-              .from(distDir)
-              .exclude(
-                "cfg/*.lmk",
-                "cfg/*.jks",
-                "cfg/*.ks",
-                "cfg/*.ser",
-                "cfg/*.p12",
-                "**/*.jpg",
-                "**/*.gif",
-                "**/*.png",
-                "**/*.pdf",
-                "**/*.ico",
-                "**/*.war",
-                "**/*.dat")
-              .filter(
-                hm,
-                org.apache.tools.ant.filters.ReplaceTokens.class
-              );
+    private CopySpec distBinFiltered(Project project, JPOSPluginExtension targetConfiguration) {
+        Map<String, Map<String, String>> hm = new HashMap<>();
+        hm.put("tokens", targetConfiguration.asMap());
+        File distBinDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get() + "/bin");
+        return project.copySpec(copy -> copy
+                .from(distBinDir)
+                .filter(
+                        hm,
+                        org.apache.tools.ant.filters.ReplaceTokens.class
+                )
+                .into("bin"));
+    }
+
+    private CopySpec distRaw(Project project, JPOSPluginExtension targetConfiguration) {
+        File distDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get());
+        return project.copySpec(copy -> copy
+                .from(distDir)
+                .include(
+                        "cfg/*.lmk",
+                        "cfg/*.ks",
+                        "cfg/*.jks",
+                        "cfg/*.ser",
+                        "cfg/authorized_keys"
+                ).setFileMode(0600));
+    }
+
+    private CopySpec mainJar(Project project) {
+        return project.copySpec(copy -> copy.from(project.getTasks().getByName("jar")));
+    }
+
+    private CopySpec depJars(Project project) {
+        return project.copySpec(copy -> copy
+                .from(project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME))
+                .into("lib"));
+    }
+
+    private CopySpec webapps(Project project) {
+        return project.copySpec(copy -> copy
+                .from(project.getBuildDir()).include("*.war")
+                .into("webapps"));
+    }
+
+    private void configureJar(Project project, JPOSPluginExtension extension) {
+        project.getTasks().withType(Jar.class, task -> {
+
+            // if we are running with both git and build time disabled, we need to always
+            // generate a jar, otherwise the copy task will copy nothing and the dist
+            // folder will be invalid i.e. two sequential ./gradlew clean iA will produce
+            // and invalid dist folder
+            if (!extension.getAddGitRevision().get() &&
+                    !extension.getAddBuildTime().get())
+                task.getOutputs().upToDateWhen(task1 -> false);
+
+            task.doFirst(t -> {
+
+                LOGGER.error("Configuring jar class-path for project {}", project.getName());
+                Attributes attr = task.getManifest().getAttributes();
+                // change the default name of the jar
+                task.getArchiveFileName().set(extension.getArchiveJarName());
+
+                attr.put("Implementation-Title", project.getName());
+                attr.put("Implementation-Version", project.getVersion());
+                attr.put("Main-Class", "org.jpos.q2.Q2");
+                attr.put("Class-Path",
+                        project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME)
+                                .getFiles()
+                                .stream()
+                                .map(file -> "lib/" + file.getName())
+                                .collect(Collectors.joining(" "))
+                );
+            });
         });
     }
 
-    private CopySpec distBinFiltered (Project project, Map<String,String> targetConfiguration) {
-        Map<String,Map<String,String>> hm = new HashMap<>();
-        hm.put("tokens", targetConfiguration);
-        File distBinDir = new File(project.getProjectDir(), targetConfiguration.get("distDir") + "/bin");
-        return project.copySpec(copy -> {
-            copy
-              .from(distBinDir)
-              .filter(
-                hm,
-                org.apache.tools.ant.filters.ReplaceTokens.class
-              )
-              .into ("bin");
-        });
-    }
-
-    private CopySpec distRaw (Project project, Map<String,String> targetConfiguration) {
-        File distDir = new File(project.getProjectDir(), targetConfiguration.get("distDir"));
-        return project.copySpec(copy -> {
-           copy
-             .from(distDir)
-             .include(
-              "cfg/*.lmk",
-              "cfg/*.ks",
-              "cfg/*.jks",
-              "cfg/*.ser",
-              "cfg/authorized_keys"
-           ).setFileMode(0600);
-        });
-    }
-
-    private CopySpec mainJar (Project project) {
-        return project.copySpec(copy -> {
-            copy.from(project.getTasks().getByName("jar"));
-        });
-    }
-
-    private CopySpec depJars (Project project) {
-        return project.copySpec(copy -> {
-            copy.from(project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME))
-            .into("lib");
-        });
-    }
-
-    private CopySpec webapps (Project project) {
-        return project.copySpec(copy -> {
-            copy
-              .from(project.getBuildDir()).include("*.war")
-              .into("webapps");
-        });
-    }
-
-    @SuppressWarnings("unchecked")
-    private void configureJar (Project project) {
-        project.getTasks().getByName("jar").dependsOn(
-          project.getTasks().getByName("createBuildTimestamp"),
-          project.getTasks().getByName("createGitRevision")
-        );
-        Attributes attr = ((Jar)project.getTasks().getByName("jar")).getManifest().getAttributes();
-
-        attr.put ("Implementation-Title",  project.getName());
-        attr.put ("Implementation-Version", project.getVersion());
-        attr.put ("Main-Class", "org.jpos.q2.Q2");
-        attr.put ("Class-Path",
-          project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME)
-            .getFiles()
-            .stream()
-            .map(file -> "lib/" + file.getName())
-            .collect(Collectors.joining(" "))
-        );
-    }
-
-    private File getResourcesBuildDir (Project project) {
+    /**
+     * We use the mainSourceSet.output.resourcesDir to get the default resources dir.
+     * <p>
+     * In jpos-app.gradle we used the runtime classpath to find the first
+     * directory that contain 'resources/main', but we can't do that here
+     * because we need the path before the class path resolution.
+     */
+    private File getResourcesBuildDir(Project project) {
         JavaPluginExtension plugin = project.getExtensions().getByType(JavaPluginExtension.class);
         SourceSet sourceSet = plugin.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
-
-        return sourceSet.getRuntimeClasspath().getFiles()
-          .stream()
-          .filter(f -> f.getPath().contains("resources/main"))
-          .findFirst()
-          .orElse(new File(project.getBuildDir(), "resources/main"));
+        return sourceSet.getOutput().getResourcesDir();
     }
 
-    private Task createViewTestsTask(Project project, Map<String, String> targetConfiguration) {
+    private Task createViewTestsTask(Project project, JPOSPluginExtension targetConfiguration) {
         var run = project.getTasks().create("viewTests");
         run.setDescription("Open a browser with the tests results");
         run.setGroup(GROUP_NAME);
