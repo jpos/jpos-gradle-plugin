@@ -20,21 +20,27 @@ import java.util.Properties;
 public interface JPOSPluginExtension {
 
     /**
-     * Target configuration to use
+     * Retrieves the target configuration property to use.
+     *
+     * @return the Property representing the target configuration
      */
     @Input
     @Option(option = "devel", description = "The target configuration to use")
     Property<String> getTarget();
 
     /**
-     * If the task that add the git metadata is executed
+     * Determines if the task that adds the git metadata should be executed.
+     *
+     * @return the Property indicating whether to include revision.properties info in the distribution folder
      */
     @Input
     @Option(option = "true", description = "If the resulting dist folder should contain revision.properties info")
     Property<Boolean> getAddGitRevision();
 
     /**
-     * If the task that add the build time metadata is executed
+     * Determines if the task that adds the build time metadata should be executed.
+     *
+     * @return the Property indicating whether to include buildinfo.properties file in the distribution folder
      */
     @Input
     @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
@@ -42,36 +48,56 @@ public interface JPOSPluginExtension {
 
 
     /**
-     * The jar that will be built
+     * Retrieves the name of the JAR file to be built.
+     *
+     * @return the Property representing the name of the archive JAR
      */
     @Input
     @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
     Property<String> getArchiveJarName();
 
     /**
-     * Where to put the war
+     * Retrieves the name of the WAR file to be placed in the distribution.
+     *
+     * @return the Property representing the name of the archive WAR
      */
     @Input
     @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
     Property<String> getArchiveWarName();
 
     /**
-     * Where to put the artifacts
+     * Retrieves the directory path where the artifacts will be installed.
+     *
+     * @return the Property indicating the installation directory
      */
     @Input
     @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
     Property<String> getInstallDir();
 
     /**
-     * The dist folder that will be used as a source
+     * Retrieves the directory that will serve as the source for the distribution.
+     *
+     * @return the Property indicating the source directory for the distribution
      */
     @Input
     @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
     Property<String> getDistDir();
 
+    /**
+     * Retrieves a map of properties that can be used internally by the plugin.
+     *
+     * @return the MapProperty of internal properties
+     */
     @Internal
     MapProperty<String, Object> getProperties();
 
+    /**
+     * Loads the plugin properties from the project-specific configuration file.
+     * The configuration file name is derived from the target environment and must exist at the project root level.
+     *
+     * @param project The Gradle project from which to load properties.
+     * @throws IOException If there is an error reading the configuration file.
+     */
     default void loadFromProject(Project project) throws IOException {
 
         initConventions(project);
@@ -106,6 +132,11 @@ public interface JPOSPluginExtension {
         }
     }
 
+    /**
+     * Converts the current properties to a map for easy access and manipulation.
+     *
+     * @return A map representation of the current properties.
+     */
     default Map<String, String> asMap() {
         HashMap<String, String> toRet = new HashMap<>();
         for (Map.Entry<String, Object> entry : getProperties().get().entrySet()) {
@@ -119,6 +150,13 @@ public interface JPOSPluginExtension {
         return toRet;
     }
 
+    /**
+     * Initializes the convention values for the plugin properties based on the given project.
+     * This sets up default values for properties such as the target environment, build time, git revision,
+     * and naming conventions for JAR and WAR archives.
+     *
+     * @param project The Gradle project whose settings will be used to initialize the conventions.
+     */
     default void initConventions(Project project) {
         getTarget().convention("devel");
         getAddBuildTime().convention(true);

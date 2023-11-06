@@ -76,6 +76,8 @@ class GitRevisionTask extends DefaultTask {
                 put(props, "untracked", status.getUntracked());
                 put(props, "untrackedFolders", status.getUntrackedFolders());
             }
+        } catch (Exception e) {
+            props.put("revision", "unknown");
         }
         return props;
     }
