@@ -274,7 +274,7 @@ public class JPOSPlugin implements Plugin<Project> {
 
             task.doFirst(t -> {
 
-                LOGGER.error("Configuring jar class-path for project {}", project.getName());
+                LOGGER.info("Configuring jar class-path for project {}", project.getName());
                 Attributes attr = task.getManifest().getAttributes();
                 // change the default name of the jar
                 task.getArchiveFileName().set(extension.getArchiveJarName());
