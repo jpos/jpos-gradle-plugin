@@ -47,14 +47,15 @@ public class JPOSPlugin implements Plugin<Project> {
     private static final String GROUP_NAME = "jPOS";
 
     public void apply(Project project) {
-
-        // we only apply 'jpos-plugin' if we have the 'JavaPlugin'
         project.getPlugins().withType(JavaPlugin.class, plugin -> {
 
             var extension = project.getExtensions().create("jpos", JPOSPluginExtension.class);
             extension.initConventions(project);
 
             ExtensionContainer ext = project.getExtensions();
+
+            if (project.hasProperty("target"))
+                extension.getTarget().set("" + project.property("target"));
             ext.add("target", extension.getTarget().get());
 
             var buildTimestampTask = createBuildTimestampTask(project);
