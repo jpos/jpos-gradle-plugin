@@ -1,6 +1,7 @@
 package org.jpos.gradle;
 
 import org.gradle.api.Project;
+import org.gradle.api.plugins.BasePluginExtension;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
@@ -53,7 +54,7 @@ public interface JPOSPluginExtension {
      * @return the Property representing the name of the archive JAR
      */
     @Input
-    @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
+    @Option(option = "true", description = "archive's jar name")
     Property<String> getArchiveJarName();
 
     /**
@@ -62,7 +63,7 @@ public interface JPOSPluginExtension {
      * @return the Property representing the name of the archive WAR
      */
     @Input
-    @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
+    @Option(option = "true", description = "archive's war name")
     Property<String> getArchiveWarName();
 
     /**
@@ -71,7 +72,7 @@ public interface JPOSPluginExtension {
      * @return the Property indicating the installation directory
      */
     @Input
-    @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
+    @Option(option = "true", description = "install directory")
     Property<String> getInstallDir();
 
     /**
@@ -80,7 +81,7 @@ public interface JPOSPluginExtension {
      * @return the Property indicating the source directory for the distribution
      */
     @Input
-    @Option(option = "true", description = "If the resulting dist folder should contain buildinfo.properties file")
+    @Option(option = "true", description = "dist directory")
     Property<String> getDistDir();
 
     /**
@@ -158,12 +159,15 @@ public interface JPOSPluginExtension {
      * @param project The Gradle project whose settings will be used to initialize the conventions.
      */
     default void initConventions(Project project) {
+        BasePluginExtension basePluginExtension = project.getExtensions().getByType(BasePluginExtension.class);
+        String archivesName = basePluginExtension.getArchivesName().get();
+
         getTarget().convention("devel");
         getAddBuildTime().convention(true);
         getAddGitRevision().convention(true);
-        getArchiveJarName().convention(String.format("%s-%s.jar", project.getName(), project.getVersion()));
-        getArchiveWarName().convention(String.format("%s-%s.war", project.getName(), project.getVersion()));
-        getInstallDir().convention(String.format("%s/install/%s", project.getBuildDir(), project.getName()));
+        getArchiveJarName().convention(String.format("%s-%s.jar", archivesName, project.getVersion()));
+        getArchiveWarName().convention(String.format("%s-%s.war", archivesName, project.getVersion()));
+        getInstallDir().convention(String.format("%s/install/%s", project.getLayout().getBuildDirectory().getAsFile().get(), project.getName()));
         getDistDir().convention("src/dist");
     }
 }
