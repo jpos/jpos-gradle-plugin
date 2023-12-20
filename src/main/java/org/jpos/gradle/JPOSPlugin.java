@@ -197,7 +197,9 @@ public class JPOSPlugin implements Plugin<Project> {
 
     private CopySpec distFiltered(Project project, JPOSPluginExtension targetConfiguration) {
         Map<String, Map<String, String>> hm = new HashMap<>();
-        hm.put("tokens", targetConfiguration.asMap());
+        var tokens = targetConfiguration.asMap();
+        tokens.put("target", targetConfiguration.getTarget().get());
+        hm.put("tokens", tokens);
         File distDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get());
         return project.copySpec(copy -> copy
                 .from(distDir)
