@@ -1,6 +1,6 @@
 /*
  * jPOS Project [http://jpos.org]
- * Copyright (C) 2000-2022 jPOS Software SRL
+ * Copyright (C) 2000-2023 jPOS Software SRL
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -54,8 +54,11 @@ public class JPOSPlugin implements Plugin<Project> {
 
             ExtensionContainer ext = project.getExtensions();
 
-            if (project.hasProperty("target"))
+            if (project.hasProperty("target")) {
                 extension.getTarget().set("" + project.property("target"));
+            }
+
+            extension.getProperties().put("target", extension.getTarget().get());
             ext.add("target", extension.getTarget().get());
 
             var buildTimestampTask = createBuildTimestampTask(project);
@@ -198,7 +201,10 @@ public class JPOSPlugin implements Plugin<Project> {
     private CopySpec distFiltered(Project project, JPOSPluginExtension targetConfiguration) {
         Map<String, Map<String, String>> hm = new HashMap<>();
         var tokens = targetConfiguration.asMap();
-        tokens.put("target", targetConfiguration.getTarget().get());
+        project.getExtensions().getExtraProperties().getProperties().forEach(
+            (k,v) -> tokens.put(k, v.toString())
+        );
+
         hm.put("tokens", tokens);
         File distDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get());
         return project.copySpec(copy -> copy
