@@ -230,7 +230,12 @@ public class JPOSPlugin implements Plugin<Project> {
 
     private CopySpec distBinFiltered(Project project, JPOSPluginExtension targetConfiguration) {
         Map<String, Map<String, String>> hm = new HashMap<>();
-        hm.put("tokens", targetConfiguration.asMap());
+        var tokens = targetConfiguration.asMap();
+        project.getExtensions().getExtraProperties().getProperties().forEach(
+            (k,v) -> tokens.put(k, v.toString())
+        );
+
+        hm.put("tokens", tokens);
         File distBinDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get() + "/bin");
         return project.copySpec(copy -> copy
                 .from(distBinDir)
