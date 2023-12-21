@@ -128,7 +128,7 @@ public interface JPOSPluginExtension {
                             break;
                     }
                 });
-                getProperties().set(startingProps);
+                getProperties().putAll(startingProps);
             }
         }
     }
