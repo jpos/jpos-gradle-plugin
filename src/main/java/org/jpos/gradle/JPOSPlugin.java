@@ -255,6 +255,8 @@ public class JPOSPlugin implements Plugin<Project> {
                         "cfg/*.lmk",
                         "cfg/*.ks",
                         "cfg/*.jks",
+                        "cfg/*.p12",
+                        "cfg/*.pfx",
                         "cfg/*.ser",
                         "cfg/authorized_keys"
                 ).setFileMode(0600));
