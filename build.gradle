@@ -6,7 +6,7 @@ plugins {
 }
 
 group 'org.jpos'
-version '0.0.9-SNAPSHOT'
+version '0.0.9'
 
 def isSnapshot = version.contains("SNAPSHOT")
 
