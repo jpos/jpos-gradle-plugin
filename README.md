@@ -4,7 +4,7 @@ In order to use the jPOS APP Plugin
 
 ```groovy
 plugins {
-    id 'org.jpos.jposapp' version '0.0.5'
+    id 'org.jpos.jposapp' version '0.0.10'
 }
 ```
 
