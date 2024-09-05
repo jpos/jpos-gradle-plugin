@@ -259,7 +259,7 @@ public class JPOSPlugin implements Plugin<Project> {
                         "cfg/*.pfx",
                         "cfg/*.ser",
                         "cfg/authorized_keys"
-                ).setFileMode(0600));
+                ).filePermissions(permissions -> permissions.unix(0600)));
     }
 
     private CopySpec mainJar(Project project) {
@@ -274,7 +274,8 @@ public class JPOSPlugin implements Plugin<Project> {
 
     private CopySpec webapps(Project project) {
         return project.copySpec(copy -> copy
-                .from(project.getBuildDir()).include("*.war")
+                .from(project.getLayout().getBuildDirectory())
+                .include("*.war")
                 .into("webapps"));
     }
 
@@ -330,7 +331,10 @@ public class JPOSPlugin implements Plugin<Project> {
         run.doLast(task -> {
             try {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                    Desktop.getDesktop().browse(Paths.get(project.getBuildDir().getPath(), "reports/tests/test", "index.html").toUri());
+                    File reportFile = project.getLayout().getBuildDirectory()
+                      .file("reports/tests/test/index.html")
+                      .get().getAsFile();
+                    Desktop.getDesktop().browse(reportFile.toURI());
                 }
             } catch (IOException e) {
                 throw new RuntimeException("Can't open test results file", e);
