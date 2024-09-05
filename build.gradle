@@ -41,6 +41,13 @@ sourceSets {
 
 configurations.functionalTestImplementation.extendsFrom(configurations.testImplementation)
 
+if (project.hasProperty("lint")) {
+    // gradle -Plint ...
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint:preview" << "-Xlint:unchecked" << "-Xlint:deprecation"
+    }
+}
+
 tasks.register('functionalTest', Test) {
     testClassesDirs = sourceSets.functionalTest.output.classesDirs
     classpath = sourceSets.functionalTest.runtimeClasspath
