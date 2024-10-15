@@ -391,7 +391,10 @@ public class JPOSPlugin implements Plugin<Project> {
      */
     private void configureJar(Project project, JPOSPluginExtension extension) {
         project.getTasks().withType(Jar.class, task -> {
-
+            if (!task.getArchiveClassifier().getOrElse("").isEmpty()) {
+                // do nothing on sources, javadoc, or custom classifiers
+                return;
+            }
             // if we are running with both git and build time disabled, we need to always
             // generate a jar, otherwise the copy task will copy nothing and the dist
             // folder will be invalid i.e. two sequential ./gradlew clean iA will produce
