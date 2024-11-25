@@ -48,3 +48,9 @@ jpos {
 ```
 
 This will generate always the same jar (and dist folder)
+
+## Per-target excludes
+
+If for some reason we want the plugin to exclude some files for a given target, we can add `<targetName>.exclude`.
+
+ 
