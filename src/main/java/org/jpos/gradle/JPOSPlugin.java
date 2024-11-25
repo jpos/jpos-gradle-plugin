@@ -66,7 +66,7 @@ public class JPOSPlugin implements Plugin<Project> {
     public void apply(Project project) {
         project.getPlugins().withType(JavaPlugin.class, plugin -> {
 
-            var extension = project.getExtensions().create("jpos", JPOSPluginExtension.class);
+            var extension = project.getExtensions().create(JPOSPluginExtension.NAME, JPOSPluginExtension.class);
             extension.initConventions(project);
 
             ExtensionContainer ext = project.getExtensions();
@@ -292,6 +292,7 @@ public class JPOSPlugin implements Plugin<Project> {
                         "**/*.ico",
                         "**/*.war",
                         "**/*.dat")
+                .exclude(excludedFiles(project))
                 .filter(
                         hm,
                         org.apache.tools.ant.filters.ReplaceTokens.class
@@ -317,6 +318,7 @@ public class JPOSPlugin implements Plugin<Project> {
         File distBinDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get() + "/bin");
         return project.copySpec(copy -> copy
                 .from(distBinDir)
+                .exclude(excludedFiles(project))
                 .filter(
                         hm,
                         org.apache.tools.ant.filters.ReplaceTokens.class
@@ -336,6 +338,7 @@ public class JPOSPlugin implements Plugin<Project> {
         File distDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get());
         return project.copySpec(copy -> copy
                 .from(distDir)
+                .exclude(excludedFiles(project))
                 .include(
                         "cfg/*.lmk",
                         "cfg/*.ks",
@@ -354,7 +357,7 @@ public class JPOSPlugin implements Plugin<Project> {
      * @return the {@link CopySpec} for the main jar file
      */
     private CopySpec mainJar(Project project) {
-        return project.copySpec(copy -> copy.from(project.getTasks().getByName("jar")));
+        return project.copySpec(copy -> copy.from(project.getTasks().getByName("jar"))).exclude(excludedFiles(project));
     }
 
     /**
@@ -366,6 +369,7 @@ public class JPOSPlugin implements Plugin<Project> {
     private CopySpec depJars(Project project) {
         return project.copySpec(copy -> copy
                 .from(project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME))
+                .exclude(excludedFiles(project))
                 .into("lib"));
     }
     
@@ -379,6 +383,7 @@ public class JPOSPlugin implements Plugin<Project> {
         return project.copySpec(copy -> copy
                 .from(project.getLayout().getBuildDirectory())
                 .include("*.war")
+                .exclude(excludedFiles(project))
                 .into("webapps"));
     }
 
@@ -462,5 +467,11 @@ public class JPOSPlugin implements Plugin<Project> {
             }
         });
         return run;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String[] excludedFiles (Project project) {
+        JPOSPluginExtension ext = (JPOSPluginExtension) project.getExtensions().getByName(JPOSPluginExtension.NAME);
+        return (String[]) ext.getProperties().get().get(JPOSPluginExtension.EXCLUDED_FILES);
     }
 }

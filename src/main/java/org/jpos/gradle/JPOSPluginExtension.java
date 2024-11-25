@@ -11,14 +11,22 @@ import org.gradle.api.tasks.options.Option;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.nio.file.Files;
+import java.util.*;
 
 /**
  * Extension for the JPOSPlugin
  */
 public interface JPOSPluginExtension {
+    /**
+     * Internal plugin name
+     */
+    public static final String NAME = "jpos";
+
+    /**
+     * per target excluded files
+     */
+    public static final String EXCLUDED_FILES = "excludedFiles";
 
     /**
      * Retrieves the target configuration property to use.
@@ -100,9 +108,14 @@ public interface JPOSPluginExtension {
      * @throws IOException If there is an error reading the configuration file.
      */
     default void loadFromProject(Project project) throws IOException {
-
         initConventions(project);
         File cfgFile = new File(project.getRootDir(), String.format("%s.properties", getTarget().get()));
+        File excludeFile = new File(project.getRootDir(), String.format("%s.exclude", getTarget().get()));
+
+        String[] excludedFiles = excludeFile.exists()
+          ? Files.readAllLines(excludeFile.toPath()).toArray(String[]::new)
+          : new String[0];
+        getProperties().put(EXCLUDED_FILES, excludedFiles);
         if (cfgFile.exists()) {
             try (FileInputStream fis = new FileInputStream(cfgFile)) {
                 Properties props = new Properties();
