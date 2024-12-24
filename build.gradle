@@ -5,8 +5,8 @@ plugins {
     id "com.gradle.plugin-publish" version "1.3.0"
 }
 
-group 'org.jpos'
-version '0.0.13-SNAPSHOT'
+group = 'org.jpos'
+version = '0.0.13-SNAPSHOT'
 
 def isSnapshot = version.contains("SNAPSHOT")
 
