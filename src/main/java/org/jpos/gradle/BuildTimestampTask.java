@@ -23,7 +23,6 @@ import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.work.DisableCachingByDefault;
 
-import javax.inject.Inject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -36,22 +35,33 @@ import java.util.Properties;
 class BuildTimestampTask extends DefaultTask {
     @OutputFile
     File outputFile;
+    String projectName;
+    Object projectVersion;
 
-    @Inject
-    public BuildTimestampTask(File outputFile) {
-        this.outputFile = outputFile;
-    }
+    public BuildTimestampTask() { }
 
     public File getOutputFile() {
         return outputFile;
     }
-    
+
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
+    }
+
+    public void setProjectVersion(Object projectVersion) {
+        this.projectVersion = projectVersion;
+    }
+
+    public void setOutputFile(File outputFile) {
+        this.outputFile = outputFile;
+    }
+
     @TaskAction
     public void writeFile() throws IOException {
         new File(outputFile.getParent()).mkdirs();
         Properties props=new Properties();
-        props.put("projectName", getProject().getName());
-        props.put("version", getProject().getVersion());
+        props.put("projectName", projectName);
+        props.put("version", projectVersion);
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z")
           .withZone(ZoneId.systemDefault());
         props.put("buildTimestamp", formatter.format(Instant.now()));

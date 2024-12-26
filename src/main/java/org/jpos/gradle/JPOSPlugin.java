@@ -20,7 +20,6 @@ package org.jpos.gradle;
 
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
-import org.gradle.api.Task;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.java.archives.Attributes;
 import org.gradle.api.logging.Logger;
@@ -31,6 +30,7 @@ import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.tasks.Exec;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.Sync;
+import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.*;
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 
@@ -65,7 +65,6 @@ public class JPOSPlugin implements Plugin<Project> {
      */
     public void apply(Project project) {
         project.getPlugins().withType(JavaPlugin.class, plugin -> {
-
             var extension = project.getExtensions().create(JPOSPluginExtension.NAME, JPOSPluginExtension.class);
             extension.initConventions(project);
 
@@ -84,9 +83,9 @@ public class JPOSPlugin implements Plugin<Project> {
             // the build timestamp and git revision task are dependencies to the 'class' task
             project.getTasks().named(JavaPlugin.CLASSES_TASK_NAME).configure(javaClasses -> {
                 if (extension.getAddBuildTime().get())
-                    javaClasses.dependsOn(buildTimestampTask);
+                    javaClasses.dependsOn(buildTimestampTask.get());
                 if (extension.getAddGitRevision().get())
-                    javaClasses.dependsOn(addGitRevisionTask);
+                    javaClasses.dependsOn(addGitRevisionTask.get());
             });
 
             // after the evaluation of the project we add the tasks,
@@ -120,25 +119,24 @@ public class JPOSPlugin implements Plugin<Project> {
      *
      * @param project the Gradle project
      * @param targetConfiguration the configuration settings for the jPOS application
-     * @return the created 'installApp' task
      */
-    private Sync createInstallAppTask(Project project, JPOSPluginExtension targetConfiguration) {
-        Sync installApp = project.getTasks().create("installApp", Sync.class);
-        installApp.setDescription("Installs jPOS based application.");
-        installApp.setGroup(GROUP_NAME);
-        installApp.dependsOn(
-                project.getTasks().getByName("jar")
-        );
-        installApp.with(
-                distFiltered(project, targetConfiguration),
-                distRaw(project, targetConfiguration),
-                mainJar(project),
-                depJars(project),
-                webapps(project)
-        );
-        installApp.into(new File(targetConfiguration.getInstallDir().get()));
-        installApp.getOutputs().upToDateWhen(task -> false);
-        return installApp;
+    private void createInstallAppTask(Project project, JPOSPluginExtension targetConfiguration) {
+        project.getTasks().register("installApp", Sync.class, installApp -> {
+            installApp.setDescription("Installs jPOS based application.");
+            installApp.setGroup(GROUP_NAME);
+            installApp.dependsOn(
+              project.getTasks().getByName("jar")
+            );
+            installApp.with(
+              distFiltered(project, targetConfiguration),
+              distRaw(project, targetConfiguration),
+              mainJar(project),
+              depJars(project),
+              webapps(project)
+            );
+            installApp.into(new File(targetConfiguration.getInstallDir().get()));
+            installApp.getOutputs().upToDateWhen(_ -> false);
+        });
     }
     
     /**
@@ -147,55 +145,50 @@ public class JPOSPlugin implements Plugin<Project> {
      *
      * @param project the Gradle project
      * @param targetConfiguration the configuration settings for the jPOS application
-     * @return the created 'run' task
      */
-    private Exec createRunTask(Project project, JPOSPluginExtension targetConfiguration) {
-        var run = project.getTasks().create("run", Exec.class);
-        run.setDescription("Runs a jPOS based application.");
-        run.setGroup(GROUP_NAME);
-        run.dependsOn(
-                project.getTasks().getByName("installApp")
-        );
-        run.workingDir(new File(targetConfiguration.getInstallDir().get()));
-        if (DefaultNativePlatform.getCurrentOperatingSystem().isWindows()) {
-            run.commandLine("bin/q2.bat");
-        } else {
-            run.commandLine("./bin/q2");
-        }
-
-        return run;
+    private void createRunTask(Project project, JPOSPluginExtension targetConfiguration) {
+        project.getTasks().register("run", Exec.class, run -> {
+            run.setDescription("Runs a jPOS based application.");
+            run.setGroup(GROUP_NAME);
+            run.dependsOn(
+              project.getTasks().getByName("installApp")
+            );
+            run.workingDir(new File(targetConfiguration.getInstallDir().get()));
+            if (DefaultNativePlatform.getCurrentOperatingSystem().isWindows()) {
+                run.commandLine("bin/q2.bat");
+            } else {
+                run.commandLine("./bin/q2");
+            }
+        });
     }
 
     /**
      * Creates a task to generate the build timestamp information file.
      *
      * @param project the Gradle project
-     * @return the created task for generating the build timestamp
+     * @return A provider for the created task for generating the build timestamp
      */
-    private BuildTimestampTask createBuildTimestampTask(Project project) {
-        var task = project.getTasks().create(
-                "createBuildTimestamp",
-                BuildTimestampTask.class,
-                new File(getResourcesBuildDir(project), "buildinfo.properties")
-        );
-        task.setDescription("Creates jPOS buildinfo.properties resource.");
-        return task;
+    private TaskProvider<BuildTimestampTask> createBuildTimestampTask(Project project) {
+        return project.getTasks().register("createBuildTimestamp", BuildTimestampTask.class, task -> {
+            task.setDescription("Creates jPOS buildinfo.properties resource.");
+            task.setOutputFile(new File(getResourcesBuildDir(project), "buildinfo.properties"));
+            task.setProjectName(project.getName());
+            task.setProjectVersion(project.getVersion());
+        });
     }
 
     /**
      * Creates a task to generate the Git revision information file.
      *
      * @param project the Gradle project
-     * @return the created task for generating the Git revision
+     * @return A provider for the created task for generating the Git revision
      */
-    private GitRevisionTask createGitRevisionTask(Project project) {
-        var task = project.getTasks().create(
-                "createGitRevision",
-                GitRevisionTask.class,
-                new File(getResourcesBuildDir(project), "revision.properties")
-        );
-        task.setDescription("Creates jPOS revision.properties resource.");
-        return task;
+    private TaskProvider<GitRevisionTask> createGitRevisionTask(Project project) {
+        return project.getTasks().register("createGitRevision", GitRevisionTask.class, task -> {
+            task.setDescription("Creates jPOS revision.properties resource.");
+            task.setOutputFile(new File(getResourcesBuildDir(project), "revision.properties"));
+            task.setProjectDir(project.getRootProject().getProjectDir());
+        });
     }
 
     /**
@@ -207,26 +200,27 @@ public class JPOSPlugin implements Plugin<Project> {
      * @param clazz the type of archive task (Tar or Zip)
      */
     private void createDistTask(Project project, JPOSPluginExtension targetConfiguration, String taskName, Class<? extends AbstractArchiveTask> clazz) {
-        var dist = project.getTasks().create(taskName, clazz);
-        dist.setGroup(GROUP_NAME);
-        dist.setDescription(String.format("Generates jPOS distribution (%s).", clazz.getSimpleName()));
-        dist.dependsOn(
-                project.getTasks().getByName("jar")
-        );
-        dist.with(
-                distFiltered(project, targetConfiguration),
-                distRaw(project, targetConfiguration),
-                mainJar(project),
-                depJars(project),
-                webapps(project)
-        ).into(
-                String.format("%s-%s", project.getName(), project.getVersion())
-        );
-        if (clazz == Tar.class) {
-            ((Tar) dist).setCompression(Compression.GZIP);
-            dist.getArchiveExtension().set("tar.gz");
-        }
-        dist.getOutputs().upToDateWhen(task -> false);
+        project.getTasks().register(taskName, clazz, dist -> {
+            dist.setGroup(GROUP_NAME);
+            dist.setDescription(String.format("Generates jPOS distribution (%s).", clazz.getSimpleName()));
+            dist.dependsOn(
+              project.getTasks().getByName("jar")
+            );
+            dist.with(
+              distFiltered(project, targetConfiguration),
+              distRaw(project, targetConfiguration),
+              mainJar(project),
+              depJars(project),
+              webapps(project)
+            ).into(
+              String.format("%s-%s", project.getName(), project.getVersion())
+            );
+            if (clazz == Tar.class) {
+                ((Tar) dist).setCompression(Compression.GZIP);
+                dist.getArchiveExtension().set("tar.gz");
+            }
+            dist.getOutputs().upToDateWhen(task -> false);
+        });
     }
 
     /**
@@ -239,24 +233,25 @@ public class JPOSPlugin implements Plugin<Project> {
      * @param clazz the class representing the type of archive task (Tar or Zip)
      */
     private void createDistNcTask(Project project, JPOSPluginExtension targetConfiguration, String taskName, Class<? extends AbstractArchiveTask> clazz) {
-        var dist = project.getTasks().create(taskName, clazz);
-        dist.setGroup(GROUP_NAME);
-        dist.setDescription(String.format("Generates jPOS distribution without configuration (%s).", clazz.getSimpleName()));
-        dist.dependsOn(
-                project.getTasks().getByName("jar")
-        );
-        dist.with(
-                distBinFiltered(project, targetConfiguration),
-                mainJar(project),
-                depJars(project),
-                webapps(project)
-        );
-        if (clazz == Tar.class) {
-            ((Tar) dist).setCompression(Compression.GZIP);
-            dist.getArchiveExtension().set("tar.gz");
-        }
-        dist.getArchiveAppendix().set("nc");
-        dist.getOutputs().upToDateWhen(task -> false);
+        project.getTasks().register(taskName, clazz, dist -> {
+            dist.setGroup(GROUP_NAME);
+            dist.setDescription(String.format("Generates jPOS distribution without configuration (%s).", clazz.getSimpleName()));
+            dist.dependsOn(
+              project.getTasks().getByName("jar")
+            );
+            dist.with(
+              distBinFiltered(project, targetConfiguration),
+              mainJar(project),
+              depJars(project),
+              webapps(project)
+            );
+            if (clazz == Tar.class) {
+                ((Tar) dist).setCompression(Compression.GZIP);
+                dist.getArchiveExtension().set("tar.gz");
+            }
+            dist.getArchiveAppendix().set("nc");
+            dist.getOutputs().upToDateWhen(task -> false);
+        });
     }
 
     /**
@@ -448,25 +443,24 @@ public class JPOSPlugin implements Plugin<Project> {
      *
      * @param project the Gradle project
      * @param targetConfiguration the configuration settings for the jPOS application
-     * @return the created task for viewing test results
      */
-    private Task createViewTestsTask(Project project, JPOSPluginExtension targetConfiguration) {
-        var run = project.getTasks().create("viewTests");
-        run.setDescription("Open a browser with the tests results");
-        run.setGroup(GROUP_NAME);
-        run.doLast(task -> {
-            try {
-                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                    File reportFile = project.getLayout().getBuildDirectory()
-                      .file("reports/tests/test/index.html")
-                      .get().getAsFile();
-                    Desktop.getDesktop().browse(reportFile.toURI());
+    private void createViewTestsTask(Project project, JPOSPluginExtension targetConfiguration) {
+       project.getTasks().register("viewTests", task -> {
+            task.setDescription("Open a browser with the tests results");
+            task.setGroup(GROUP_NAME);
+            task.doLast(_ -> {
+                try {
+                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                        File reportFile = project.getLayout().getBuildDirectory()
+                          .file("reports/tests/test/index.html")
+                          .get().getAsFile();
+                        Desktop.getDesktop().browse(reportFile.toURI());
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException("Can't open test results file", e);
                 }
-            } catch (IOException e) {
-                throw new RuntimeException("Can't open test results file", e);
-            }
+            });
         });
-        return run;
     }
 
     @SuppressWarnings("unchecked")
