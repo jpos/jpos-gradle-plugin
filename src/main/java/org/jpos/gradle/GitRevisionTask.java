@@ -20,6 +20,8 @@ package org.jpos.gradle;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.gradle.api.DefaultTask;
@@ -30,7 +32,10 @@ import org.gradle.work.DisableCachingByDefault;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Properties;
 import java.util.Set;
@@ -66,10 +71,12 @@ class GitRevisionTask extends DefaultTask {
         try (Git git = Git.open(projectDir)) {
             var status = git.status().call();
             Repository rep = git.getRepository();
-            props.put("branch", rep.getBranch());
-            Iterator<RevCommit> iter = git.log().call().iterator();
-            RevCommit commit = iter.next();
-            props.put ("revision", (iter.hasNext() ? commit.getId().abbreviate(7).name() : "unknown") + (status.isClean() ? "" : "/dirty"));
+            String branch = rep.getBranch();
+            ObjectId head = rep.resolve(branch);
+            String headRev = head != null ? head.abbreviate(9).name() : "unknown";
+
+            props.put("branch", branch);
+            props.put ("revision", headRev + (status.isClean() ? "" : "/dirty"));
             if (!status.isClean()) {
                 put(props, "modified", status.getModified());
                 put(props, "conflicting", status.getConflicting());
