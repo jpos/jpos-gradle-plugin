@@ -33,14 +33,32 @@ import org.gradle.api.tasks.Sync;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.*;
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
+import org.gradle.api.file.DuplicatesStrategy;
+import org.gradle.api.tasks.bundling.Jar;
+import org.gradle.api.tasks.SourceSetContainer;
 
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.stream.Stream;
 
 /**
  * The JPOSPlugin is a Gradle plugin for building, installing, and running jPOS-based applications.
@@ -50,6 +68,7 @@ import java.util.stream.Collectors;
 public class JPOSPlugin implements Plugin<Project> {
     private static final Logger LOGGER = Logging.getLogger(JPOSPlugin.class);
     private static final String GROUP_NAME = "jPOS";
+    private static final String SERVICES_PATH = "META-INF/services";
 
     /**
      * Default constructor for the JPOSPlugin class.
@@ -102,6 +121,7 @@ public class JPOSPlugin implements Plugin<Project> {
                     createDistNcTask(project, extension, "zipnc", Zip.class);
                     createRunTask(project, extension);
                     createViewTestsTask(project, extension);
+                    createFatJarTask(project, extension);
                 } catch (IOException e) {
                     LOGGER.error(e.getMessage());
                     e.printStackTrace(System.err);
@@ -109,8 +129,6 @@ public class JPOSPlugin implements Plugin<Project> {
                 }
             });
         });
-
-
     }
 
     /**
@@ -467,5 +485,242 @@ public class JPOSPlugin implements Plugin<Project> {
     private String[] excludedFiles (Project project) {
         JPOSPluginExtension ext = (JPOSPluginExtension) project.getExtensions().getByName(JPOSPluginExtension.NAME);
         return (String[]) ext.getProperties().get().get(JPOSPluginExtension.EXCLUDED_FILES);
+    }
+
+    private void createFatJarTask(Project project, JPOSPluginExtension extension) {
+        project.getTasks().register("fatjar", Jar.class, fatjar -> {
+            fatjar.setGroup(GROUP_NAME);
+            fatjar.setDescription("Builds an executable fat JAR (application + runtime dependencies), merging META-INF/services/* for ServiceLoader.");
+
+            fatjar.dependsOn(project.getTasks().named(JavaPlugin.CLASSES_TASK_NAME));
+
+            fatjar.getArchiveClassifier().set("all");
+            fatjar.getArchiveFileName().set(
+              String.format("%s-%s-all.jar", project.getName(), project.getVersion())
+            );
+
+            fatjar.setDuplicatesStrategy(DuplicatesStrategy.EXCLUDE);
+
+            // Project output (classes + resources).
+            SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
+            var mainOutput = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME).getOutput();
+            fatjar.from(mainOutput);
+
+            // Runtime classpath (jars + dirs)
+            var runtimeCp = project.getConfigurations()
+              .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME);
+
+            // Expand jars into trees; keep directories as-is (no FileCollection.map()).
+            var expandedRuntime = project.files((java.util.concurrent.Callable<Object>) () ->
+              runtimeCp.getFiles().stream()
+                .map(f -> f.isDirectory() ? f : project.zipTree(f))
+                .collect(java.util.stream.Collectors.toList())
+            );
+
+            // Include runtime deps, but exclude META-INF/services/** (we will merge them ourselves).
+            fatjar.from(expandedRuntime, spec -> spec
+              .exclude(SERVICES_PATH + "/**")
+              .exclude("META-INF/*.SF")
+              .exclude("META-INF/*.DSA")
+              .exclude("META-INF/*.RSA")
+              .exclude("META-INF/SIG-*")
+            );
+
+            // Temp dir for merged services
+            var mergedServicesDir = project.getLayout().getBuildDirectory()
+              .dir("tmp/fatjar-merged-services")
+              .map(d -> d.getAsFile());
+
+            fatjar.exclude("META-INF/*.SF");
+            fatjar.exclude("META-INF/*.DSA");
+            fatjar.exclude("META-INF/*.RSA");
+            fatjar.exclude("META-INF/SIG-*");
+            fatjar.from(mergedServicesDir);
+            fatjar.doFirst(task -> {
+                File outDir = mergedServicesDir.get();
+
+                try {
+                    // Clean and recreate the output directory
+                    if (outDir.exists()) {
+                        deleteRecursively(outDir.toPath());
+                    }
+                    Files.createDirectories(outDir.toPath());
+
+                    // Collect all sources that may contribute META-INF/services/*
+                    List<File> sources = new ArrayList<>();
+
+                    // Project output (classes + resources)
+                    for (File f : mainOutput.getFiles()) {
+                        sources.add(f);
+                    }
+
+                    // Runtime classpath (dirs + jars)
+                    for (File f : runtimeCp.getFiles()) {
+                        sources.add(f);
+                    }
+
+                    // Merge service descriptors
+                    Map<String, LinkedHashSet<String>> merged = new LinkedHashMap<>();
+
+                    List<String> signedJars = new ArrayList<>();
+                    for (File src : sources) {
+                        if (!src.exists()) {
+                            continue;
+                        }
+                        if (src.isDirectory()) {
+                            mergeServicesFromDirectory(src.toPath(), merged);
+                        } else if (src.getName().endsWith(".jar")) {
+                            // Detect signatures for logging
+                            List<String> sigs = findJarSignatures(src);
+                            if (!sigs.isEmpty()) {
+                                signedJars.add(
+                                  src.getName() + " -> " + String.join(", ", sigs)
+                                );
+                            }
+                            mergeServicesFromJar(src, merged);
+                        }
+                    }
+                    if (!signedJars.isEmpty()) {
+                        LOGGER.lifecycle(
+                          "fatjar: stripped signature metadata from {} signed dependency JAR(s):",
+                          signedJars.size()
+                        );
+                        for (String s : signedJars) {
+                            LOGGER.lifecycle("  - {}", s);
+                        }
+                    }
+
+                    // Write merged META-INF/services/* files
+                    Path servicesRoot = outDir.toPath().resolve(SERVICES_PATH);
+                    Files.createDirectories(servicesRoot);
+
+                    for (Map.Entry<String, LinkedHashSet<String>> entry : merged.entrySet()) {
+                        String relativePath = entry.getKey(); // META-INF/services/<fqcn>
+                        Path target = outDir.toPath().resolve(relativePath);
+
+                        Files.createDirectories(target.getParent());
+
+                        try (BufferedWriter writer = Files.newBufferedWriter(
+                          target,
+                          StandardCharsets.UTF_8,
+                          StandardOpenOption.CREATE,
+                          StandardOpenOption.TRUNCATE_EXISTING)) {
+
+                            for (String provider : entry.getValue()) {
+                                writer.write(provider);
+                                writer.newLine();
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    throw new UncheckedIOException(
+                      "Failed to merge META-INF/services entries for fatjar", e
+                    );
+                }
+            });
+            fatjar.getManifest().attributes(Map.of(
+              "Implementation-Title", project.getName(),
+              "Implementation-Version", String.valueOf(project.getVersion()),
+              "Main-Class", "org.jpos.q2.Q2"
+            ));
+        });
+    }
+
+    private static void mergeServicesFromDirectory(Path root, Map<String, LinkedHashSet<String>> merged) throws IOException {
+        Path servicesDir = root.resolve(SERVICES_PATH);
+        if (!Files.isDirectory(servicesDir)) return;
+
+        try (Stream<Path> paths = Files.walk(servicesDir)) {
+            paths.filter(Files::isRegularFile).forEach(p -> {
+                Path rel = root.relativize(p); // META-INF/services/...
+                String relPath = rel.toString().replace(File.separatorChar, '/');
+
+                try {
+                    List<String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
+                    merged.computeIfAbsent(relPath, __ -> new LinkedHashSet<>());
+                    addServiceLines(merged.get(relPath), lines);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException uioe) {
+            throw uioe.getCause();
+        }
+    }
+
+    private static void mergeServicesFromJar(File jarFile, Map<String, LinkedHashSet<String>> merged) throws IOException {
+        try (JarFile jf = new JarFile(jarFile)) {
+            Enumeration<JarEntry> en = jf.entries();
+            while (en.hasMoreElements()) {
+                JarEntry entry = en.nextElement();
+                if (entry.isDirectory()) continue;
+
+                String name = entry.getName();
+                if (!name.startsWith(SERVICES_PATH + "/")) continue;
+
+                try (InputStream in = jf.getInputStream(entry);
+                     BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+
+                    List<String> lines = new ArrayList<>();
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        lines.add(line);
+                    }
+
+                    merged.computeIfAbsent(name, __ -> new LinkedHashSet<>());
+                    addServiceLines(merged.get(name), lines);
+                }
+            }
+        }
+    }
+
+    private static void addServiceLines(LinkedHashSet<String> target, List<String> lines) {
+        for (String raw : lines) {
+            String line = raw == null ? "" : raw.trim();
+
+            // Preserve ServiceLoader semantics:
+            // - ignore blank lines
+            // - ignore comments (leading '#')
+            if (line.isEmpty() || line.startsWith("#")) continue;
+
+            target.add(line);
+        }
+    }
+
+    private static void deleteRecursively(Path path) throws IOException {
+        if (!Files.exists(path)) return;
+        try (Stream<Path> walk = Files.walk(path)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException uioe) {
+            throw uioe.getCause();
+        }
+    }
+
+    private static List<String> findJarSignatures(File jarFile) throws IOException {
+        List<String> signatures = new ArrayList<>();
+        try (JarFile jf = new JarFile(jarFile)) {
+            Enumeration<JarEntry> entries = jf.entries();
+            while (entries.hasMoreElements()) {
+                JarEntry e = entries.nextElement();
+                if (e.isDirectory()) {
+                    continue;
+                }
+                String name = e.getName();
+                if (name.startsWith("META-INF/") &&
+                  (name.endsWith(".SF")
+                    || name.endsWith(".RSA")
+                    || name.endsWith(".DSA")
+                    || name.startsWith("META-INF/SIG-"))) {
+                    signatures.add(name);
+                }
+            }
+        }
+        return signatures;
     }
 }
