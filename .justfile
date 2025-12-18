@@ -2,5 +2,5 @@ lint:
     gradle -Plint clean jar
 
 plocal:
-    gradle publishToMavenLocal
+    gradle publishPluginToMavenLocal
 
