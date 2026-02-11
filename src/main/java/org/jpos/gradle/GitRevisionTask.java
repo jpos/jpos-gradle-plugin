@@ -1,6 +1,6 @@
 /*
  * jPOS Project [http://jpos.org]
- * Copyright (C) 2000-2024 jPOS Software SRL
+ * Copyright (C) 2000-2026 jPOS Software SRL
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -21,22 +21,17 @@ package org.jpos.gradle;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.work.DisableCachingByDefault;
 
-import javax.inject.Inject;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Iterator;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
@@ -67,8 +62,14 @@ class GitRevisionTask extends DefaultTask {
     }
 
     private Properties createProperties() throws IOException, GitAPIException {
-        Properties props=new Properties();
-        try (Git git = Git.open(projectDir)) {
+        var repoBuilder = new FileRepositoryBuilder()
+            .findGitDir(projectDir)
+            .readEnvironment();
+
+        Properties props= new Properties();
+        try ( Repository repo = repoBuilder.build();
+              Git git = new Git(repo))
+        {
             var status = git.status().call();
             Repository rep = git.getRepository();
             String branch = rep.getBranch();
@@ -89,7 +90,8 @@ class GitRevisionTask extends DefaultTask {
                 put(props, "untracked", status.getUntracked());
                 put(props, "untrackedFolders", status.getUntrackedFolders());
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            getProject().getLogger().warn("Error in GitRevisionTask, revision is \"unknown\": "+t.getMessage());
             props.put("revision", "unknown");
         }
         return props;
