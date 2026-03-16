@@ -255,12 +255,16 @@ public class JPOSPlugin implements Plugin<Project> {
             dist.dependsOn(
               project.getTasks().getByName("jar")
             );
-            dist.with(
-              distBinFiltered(project, targetConfiguration),
-              mainJar(project),
-              depJars(project),
-              webapps(project)
-            );
+            List<CopySpec> specs = new ArrayList<>();
+            specs.add(distBinFiltered(project, targetConfiguration));
+            specs.add(mainJar(project));
+            specs.add(depJars(project));
+            specs.add(webapps(project));
+            for (String extraPath : targetConfiguration.getExtraPaths().get()) {
+                specs.add(distExtraFiltered(project, targetConfiguration, extraPath));
+                specs.add(distExtraRaw(project, targetConfiguration, extraPath));
+            }
+            dist.with(specs.toArray(new CopySpec[0]));
             if (clazz == Tar.class) {
                 ((Tar) dist).setCompression(Compression.GZIP);
                 dist.getArchiveExtension().set("tar.gz");
@@ -342,6 +346,67 @@ public class JPOSPlugin implements Plugin<Project> {
                 )
                 .filePermissions(permissions -> permissions.unix(0754))
                 .into("bin"));
+    }
+
+    /**
+     * Creates a {@link CopySpec} that copies filtered files from an extra path directory for the distnc/zipnc tasks.
+     * Uses the same filtering rules as distFiltered (token replacement, binary/security file exclusion).
+     *
+     * @param project the Gradle project
+     * @param targetConfiguration the configuration settings for the jPOS application
+     * @param path the extra path name relative to src/dist/
+     * @return the {@link CopySpec} for the filtered extra path files
+     */
+    private CopySpec distExtraFiltered(Project project, JPOSPluginExtension targetConfiguration, String path) {
+        Map<String, Map<String, String>> hm = new HashMap<>();
+        var tokens = targetConfiguration.asMap();
+        project.getExtensions().getExtraProperties().getProperties().forEach(
+            (k,v) -> tokens.put(k, v.toString())
+        );
+
+        hm.put("tokens", tokens);
+        File extraDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get() + "/" + path);
+        return project.copySpec(copy -> copy
+                .from(extraDir)
+                .exclude(
+                        "**/*.jpg",
+                        "**/*.gif",
+                        "**/*.png",
+                        "**/*.pdf",
+                        "**/*.ico",
+                        "**/*.war",
+                        "**/*.dat")
+                .exclude(excludedFiles(project))
+                .filter(
+                        hm,
+                        org.apache.tools.ant.filters.ReplaceTokens.class
+                )
+                .into(path));
+    }
+
+    /**
+     * Creates a {@link CopySpec} that copies raw (binary/image) files from an extra path directory
+     * for the distnc/zipnc tasks. These files are copied without filtering.
+     *
+     * @param project the Gradle project
+     * @param targetConfiguration the configuration settings for the jPOS application
+     * @param path the extra path name relative to src/dist/
+     * @return the {@link CopySpec} for the raw extra path files
+     */
+    private CopySpec distExtraRaw(Project project, JPOSPluginExtension targetConfiguration, String path) {
+        File extraDir = new File(project.getProjectDir(), targetConfiguration.getDistDir().get() + "/" + path);
+        return project.copySpec(copy -> copy
+                .from(extraDir)
+                .include(
+                        "**/*.jpg",
+                        "**/*.gif",
+                        "**/*.png",
+                        "**/*.pdf",
+                        "**/*.ico",
+                        "**/*.war",
+                        "**/*.dat")
+                .exclude(excludedFiles(project))
+                .into(path));
     }
 
     /**

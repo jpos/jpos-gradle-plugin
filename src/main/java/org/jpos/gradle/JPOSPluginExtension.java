@@ -2,6 +2,7 @@ package org.jpos.gradle;
 
 import org.gradle.api.Project;
 import org.gradle.api.plugins.BasePluginExtension;
+import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
@@ -93,6 +94,14 @@ public interface JPOSPluginExtension {
     Property<String> getDistDir();
 
     /**
+     * Retrieves the list of extra paths from src/dist/ to include in distnc/zipnc tasks.
+     *
+     * @return the ListProperty of extra path names
+     */
+    @Input
+    ListProperty<String> getExtraPaths();
+
+    /**
      * Retrieves a map of properties that can be used internally by the plugin.
      *
      * @return the MapProperty of internal properties
@@ -182,5 +191,6 @@ public interface JPOSPluginExtension {
         getArchiveWarName().convention(String.format("%s-%s.war", archivesName, project.getVersion()));
         getInstallDir().convention(String.format("%s/install/%s", project.getLayout().getBuildDirectory().getAsFile().get(), project.getName()));
         getDistDir().convention("src/dist");
+        getExtraPaths().convention(Collections.emptyList());
     }
 }

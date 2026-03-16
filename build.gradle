@@ -40,6 +40,11 @@ sourceSets {
 }
 
 configurations.functionalTestImplementation.extendsFrom(configurations.testImplementation)
+configurations.functionalTestRuntimeOnly.extendsFrom(configurations.testRuntimeOnly)
+
+dependencies {
+    functionalTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
 
 if (project.hasProperty("lint")) {
     // gradle -Plint ...
@@ -52,6 +57,7 @@ tasks.register('functionalTest', Test) {
     testClassesDirs = sourceSets.functionalTest.output.classesDirs
     classpath = sourceSets.functionalTest.runtimeClasspath
     useJUnitPlatform()
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 gradlePlugin.testSourceSets(sourceSets.functionalTest)
