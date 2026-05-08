@@ -34,16 +34,31 @@ import javax.inject.Inject;
 public abstract class InstallResourcesTask extends JavaExec {
     private final Property<String> outputDir;
 
+    /**
+     * Creates an install resources task.
+     *
+     * @param objects Gradle object factory used to create task properties
+     */
     @Inject
     public InstallResourcesTask(ObjectFactory objects) {
         outputDir = objects.property(String.class);
     }
 
+    /**
+     * Returns the directory where embedded q2 resources are installed.
+     *
+     * @return output directory property, defaulting to {@code jpos.installDir}
+     */
     @Input
     public Property<String> getOutputDir() {
         return outputDir;
     }
 
+    /**
+     * Sets the directory where embedded q2 resources are installed.
+     *
+     * @param outputDir output directory path supplied through the {@code --outputDir} task option
+     */
     @Option(option = "outputDir", description = "Output directory for installed resources. Defaults to jpos.installDir.")
     public void setOutputDir(String outputDir) {
         this.outputDir.set(outputDir);
