@@ -195,6 +195,36 @@ class ExtraPathsFunctionalTest {
             "Should not contain docs/ without extraPaths. Files: " + files);
     }
 
+    @Test
+    void installResourcesUsesDefaultAndCustomOutputDir() throws Exception {
+        writeFile(
+            "src/main/resources/META-INF/q2/installs/deploy/99_test.xml",
+            "<deploy>test</deploy>\n"
+        );
+
+        GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withPluginClasspath()
+            .withArguments("installResources", "--stacktrace")
+            .build();
+
+        Path defaultOutput = projectDir.toPath().resolve("build/install/test-app/deploy/99_test.xml");
+        assertTrue(Files.isRegularFile(defaultOutput),
+            "installResources should use jpos.installDir by default");
+        assertEquals("<deploy>test</deploy>\n", Files.readString(defaultOutput));
+
+        GradleRunner.create()
+            .withProjectDir(projectDir)
+            .withPluginClasspath()
+            .withArguments("installResources", "--outputDir=build/custom-install", "--stacktrace")
+            .build();
+
+        Path customOutput = projectDir.toPath().resolve("build/custom-install/deploy/99_test.xml");
+        assertTrue(Files.isRegularFile(customOutput),
+            "installResources should accept --outputDir");
+        assertEquals("<deploy>test</deploy>\n", Files.readString(customOutput));
+    }
+
     // --- helpers ---
 
     private void writeFile(String relativePath, String content) throws IOException {

@@ -113,6 +113,7 @@ public class JPOSPlugin implements Plugin<Project> {
                     LOGGER.debug("Loaded config for the jpos plugin {} -  {}", pr.getName(), extension.asMap());
                     configureJar(project, extension);
                     createInstallAppTask(project, extension);
+                    createInstallResourcesTask(project, extension);
                     createDistTask(project, extension, "dist", Tar.class);
                     createDistTask(project, extension, "zip", Zip.class);
                     createDistNcTask(project, extension, "distnc", Tar.class);
@@ -152,6 +153,37 @@ public class JPOSPlugin implements Plugin<Project> {
             );
             installApp.into(new File(targetConfiguration.getInstallDir().get()));
             installApp.getOutputs().upToDateWhen(_ -> false);
+        });
+    }
+
+    /**
+     * Creates the 'installResources' task, which extracts q2 module resources embedded in
+     * META-INF/q2/installs into a target directory using org.jpos.q2.install.Install.
+     *
+     * @param project the Gradle project
+     * @param targetConfiguration the configuration settings for the jPOS application
+     */
+    private void createInstallResourcesTask(Project project, JPOSPluginExtension targetConfiguration) {
+        project.getTasks().register("installResources", InstallResourcesTask.class, installResources -> {
+            installResources.setDescription("Installs embedded jPOS resources from META-INF/q2/installs.");
+            installResources.setGroup(GROUP_NAME);
+            installResources.dependsOn(project.getTasks().getByName("installApp"));
+
+            SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
+            SourceSet mainSourceSet = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+            TaskProvider<Jar> jarTask = project.getTasks().named("jar", Jar.class);
+
+            installResources.setClasspath(
+              mainSourceSet.getRuntimeClasspath().plus(
+                project.files(jarTask.flatMap(Jar::getArchiveFile))
+              )
+            );
+            installResources.getMainClass().set("org.jpos.q2.install.Install");
+            installResources.getOutputDir().convention(targetConfiguration.getInstallDir());
+            installResources.doFirst(_ -> installResources.setArgs(
+              List.of("--outputDir=" + installResources.getOutputDir().get())
+            ));
+            installResources.getOutputs().upToDateWhen(_ -> false);
         });
     }
 

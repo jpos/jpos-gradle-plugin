@@ -49,6 +49,22 @@ jpos {
 
 This will generate always the same jar (and dist folder)
 
+## Installing embedded module resources
+
+The plugin provides an `installResources` task that runs `org.jpos.q2.install.Install` and extracts resources packaged under `META-INF/q2/installs`.
+
+By default, resources are installed into `jpos.installDir`:
+
+```bash
+./gradlew installResources
+```
+
+You can override the target directory with the task option:
+
+```bash
+./gradlew installResources --outputDir=/path/to/install
+```
+
 ## Per-target excludes
 
 If for some reason we want the plugin to exclude some files for a given target, we can add `<targetName>.exclude`.
