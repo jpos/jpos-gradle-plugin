@@ -65,6 +65,34 @@ You can override the target directory with the task option:
 ./gradlew installResources --outputDir=/path/to/install
 ```
 
+## Pinning SNAPSHOT versions
+
+During development, projects typically track `-SNAPSHOT` versions of jPOS, jPOS-EE
+and related libraries in `gradle/libs.versions.toml`. When entering a certification
+or QA phase, those versions can be pinned to specific timestamped snapshot builds
+(e.g. `3.0.2-20260720.022713-26`, as published in the repository's
+`maven-metadata.xml`) — and later restored — without editing the catalog by hand:
+
+```bash
+./gradlew pins             # list SNAPSHOT/pinned versions and their latest available builds
+./gradlew pin              # pin every SNAPSHOT version to its latest snapshot build
+./gradlew pin --ref jpos   # pin only the 'jpos' version key to its latest snapshot build
+./gradlew pin --ref jpos --to 3.0.2-20260720.022713-26   # pin to a specific build
+./gradlew unpin --ref jpos # restore the original SNAPSHOT for 'jpos'
+./gradlew unpin            # restore all pinned versions
+```
+
+Pinning rewrites only the affected line, preserving comments and formatting, and
+records the original SNAPSHOT in a trailing comment so `unpin` can restore it:
+
+```toml
+jpos = "3.0.2-20260720.022713-26" # pinned-from 3.0.2-SNAPSHOT
+```
+
+Any entry in `[versions]` whose value ends in `-SNAPSHOT` (or was previously pinned)
+is eligible — jPOS, jPOS-EE, or any in-house library. The latest build for each
+version is discovered from the project's declared Maven repositories.
+
 ## Per-target excludes
 
 If for some reason we want the plugin to exclude some files for a given target, we can add `<targetName>.exclude`.
