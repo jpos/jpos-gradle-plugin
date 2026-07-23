@@ -91,7 +91,7 @@ class GitRevisionTask extends DefaultTask {
                 put(props, "untrackedFolders", status.getUntrackedFolders());
             }
         } catch (Throwable t) {
-            getProject().getLogger().warn("Error in GitRevisionTask, revision is \"unknown\": "+t.getMessage());
+            getLogger().warn("Error in GitRevisionTask, revision is \"unknown\": "+t.getMessage());
             props.put("revision", "unknown");
         }
         return props;

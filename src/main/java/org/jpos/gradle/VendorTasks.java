@@ -84,13 +84,16 @@ public final class VendorTasks {
     private VendorTasks() {}
 
     static void register(Project project) {
+        String ccReason = "one-shot maintenance task that uses Project APIs at execution time";
         project.getTasks().register("vendor", Vendor.class, t -> {
             t.setGroup("jPOS");
             t.setDescription("Extracts a dependency's sources into vendor/<name>/ and redirects it there via dependency substitution.");
+            t.notCompatibleWithConfigurationCache(ccReason);
         });
         project.getTasks().register("unvendor", Unvendor.class, t -> {
             t.setGroup("jPOS");
             t.setDescription("Removes a vendored module (all by default) and restores settings.gradle.");
+            t.notCompatibleWithConfigurationCache(ccReason);
         });
     }
 

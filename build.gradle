@@ -2,7 +2,7 @@ plugins {
     id 'java-gradle-plugin'
     id 'maven-publish'
     id 'idea'
-    id "com.gradle.plugin-publish" version "1.3.0"
+    id "com.gradle.plugin-publish" version "2.1.1"
 }
 
 group = 'org.jpos'
@@ -30,6 +30,11 @@ gradlePlugin {
             description = 'Implements jPOS app conventions'
             implementationClass = 'org.jpos.gradle.JPOSPlugin'
             tags.set(['jpos', 'iso8583'])
+            compatibility {
+                features {
+                    configurationCache = true
+                }
+            }
         }
     }
 }

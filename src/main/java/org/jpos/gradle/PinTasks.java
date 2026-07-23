@@ -80,17 +80,21 @@ public final class PinTasks {
     }
 
     static void register(Project project) {
+        String ccReason = "one-shot maintenance task that uses Project APIs at execution time";
         project.getTasks().register("pins", Pins.class, t -> {
             t.setGroup("jPOS");
             t.setDescription("Lists SNAPSHOT/pinned versions in libs.versions.toml and their latest snapshot builds.");
+            t.notCompatibleWithConfigurationCache(ccReason);
         });
         project.getTasks().register("pin", Pin.class, t -> {
             t.setGroup("jPOS");
             t.setDescription("Pins SNAPSHOT versions in libs.versions.toml to specific timestamped snapshot builds.");
+            t.notCompatibleWithConfigurationCache(ccReason);
         });
         project.getTasks().register("unpin", Unpin.class, t -> {
             t.setGroup("jPOS");
             t.setDescription("Restores pinned versions in libs.versions.toml back to their SNAPSHOTs.");
+            t.notCompatibleWithConfigurationCache(ccReason);
         });
     }
 

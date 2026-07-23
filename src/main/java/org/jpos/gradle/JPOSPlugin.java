@@ -63,16 +63,23 @@ import java.util.stream.Stream;
  * It sets up various tasks such as creating distribution archives, installing the app, and managing build information.
  * This class also defines custom tasks related to the jPOS project lifecycle, including handling distribution archives and test reports.
  */
-public class JPOSPlugin implements Plugin<Project> {
+public abstract class JPOSPlugin implements Plugin<Project> {
     private static final Logger LOGGER = Logging.getLogger(JPOSPlugin.class);
     private static final String GROUP_NAME = "jPOS";
     private static final String SERVICES_PATH = "META-INF/services";
 
+    private final org.gradle.api.file.ArchiveOperations archiveOperations;
+
     /**
-     * Default constructor for the JPOSPlugin class.
-     * This constructor initializes an instance of the plugin, allowing it to be applied to a Gradle project.
+     * Constructor used by Gradle to instantiate the plugin.
+     *
+     * @param archiveOperations injected service used to expand dependency jars without
+     *        touching the Project at execution time (configuration-cache compatibility)
      */
-    public JPOSPlugin() {}
+    @javax.inject.Inject
+    public JPOSPlugin(org.gradle.api.file.ArchiveOperations archiveOperations) {
+        this.archiveOperations = archiveOperations;
+    }
 
     /**
      * Applies the plugin to the specified project, setting up various tasks and configurations
@@ -183,9 +190,12 @@ public class JPOSPlugin implements Plugin<Project> {
             );
             installResources.getMainClass().set("org.jpos.q2.install.Install");
             installResources.getOutputDir().convention(targetConfiguration.getInstallDir());
-            installResources.doFirst(_ -> installResources.setArgs(
-              List.of("--outputDir=" + installResources.getOutputDir().get())
-            ));
+            // use the action's task parameter instead of capturing the task from the
+            // enclosing scope, so the closure serializes under the configuration cache
+            installResources.doFirst(t -> {
+                InstallResourcesTask ir = (InstallResourcesTask) t;
+                ir.setArgs(List.of("--outputDir=" + ir.getOutputDir().get()));
+            });
             installResources.getOutputs().upToDateWhen(_ -> false);
         });
     }
@@ -508,11 +518,21 @@ public class JPOSPlugin implements Plugin<Project> {
     /**
      * Configures the jar task for the project, setting attributes such as the implementation
      * title, version, and main class, as well as setting the classpath for the jar.
+     * Everything is wired at configuration time (the Class-Path attribute through a lazy
+     * provider) so the task is compatible with the configuration cache.
      *
      * @param project the Gradle project
      * @param extension the jPOS plugin extension settings
      */
     private void configureJar(Project project, JPOSPluginExtension extension) {
+        String projectName = project.getName();
+        String projectVersion = String.valueOf(project.getVersion());
+        var classPath = project.getConfigurations()
+                .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME)
+                .getIncoming().getFiles().getElements()
+                .map(files -> files.stream()
+                        .map(f -> "lib/" + f.getAsFile().getName())
+                        .collect(Collectors.joining(" ")));
         project.getTasks().withType(Jar.class, task -> {
             if (!task.getArchiveClassifier().getOrElse("").isEmpty()) {
                 // do nothing on sources, javadoc, or custom classifiers
@@ -526,24 +546,15 @@ public class JPOSPlugin implements Plugin<Project> {
                     !extension.getAddBuildTime().get())
                 task.getOutputs().upToDateWhen(task1 -> false);
 
-            task.doFirst(t -> {
+            LOGGER.info("Configuring jar class-path for project {}", projectName);
+            // change the default name of the jar
+            task.getArchiveFileName().set(extension.getArchiveJarName());
 
-                LOGGER.info("Configuring jar class-path for project {}", project.getName());
-                Attributes attr = task.getManifest().getAttributes();
-                // change the default name of the jar
-                task.getArchiveFileName().set(extension.getArchiveJarName());
-
-                attr.put("Implementation-Title", project.getName());
-                attr.put("Implementation-Version", project.getVersion());
-                attr.put("Main-Class", "org.jpos.q2.Q2");
-                attr.put("Class-Path",
-                        project.getConfigurations().getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME)
-                                .getFiles()
-                                .stream()
-                                .map(file -> "lib/" + file.getName())
-                                .collect(Collectors.joining(" "))
-                );
-            });
+            Attributes attr = task.getManifest().getAttributes();
+            attr.put("Implementation-Title", projectName);
+            attr.put("Implementation-Version", projectVersion);
+            attr.put("Main-Class", "org.jpos.q2.Q2");
+            attr.put("Class-Path", classPath);
         });
     }
 
@@ -571,12 +582,12 @@ public class JPOSPlugin implements Plugin<Project> {
        project.getTasks().register("viewTests", task -> {
             task.setDescription("Open a browser with the tests results");
             task.setGroup(GROUP_NAME);
+            File reportFile = project.getLayout().getBuildDirectory()
+              .file("reports/tests/test/index.html")
+              .get().getAsFile();
             task.doLast(_ -> {
                 try {
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                        File reportFile = project.getLayout().getBuildDirectory()
-                          .file("reports/tests/test/index.html")
-                          .get().getAsFile();
                         Desktop.getDesktop().browse(reportFile.toURI());
                     }
                 } catch (IOException e) {
@@ -606,19 +617,26 @@ public class JPOSPlugin implements Plugin<Project> {
 
             fatjar.setDuplicatesStrategy(DuplicatesStrategy.EXCLUDE);
 
-            // Project output (classes + resources).
+            // Project output (classes + resources), captured as a plain FileCollection:
+            // the configuration cache deserializes it as one, so a SourceSetOutput-typed
+            // lambda capture would fail with a ClassCastException
             SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
-            var mainOutput = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME).getOutput();
+            org.gradle.api.file.FileCollection mainOutput =
+              sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME).getOutput();
             fatjar.from(mainOutput);
 
-            // Runtime classpath (jars + dirs)
+            // Runtime classpath (jars + dirs) as a plain FileCollection: neither the
+            // Configuration nor the Project may be referenced at execution time under
+            // the configuration cache
             var runtimeCp = project.getConfigurations()
-              .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME);
+              .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME)
+              .getIncoming().getFiles();
+            var archives = archiveOperations;
 
             // Expand jars into trees; keep directories as-is (no FileCollection.map()).
             var expandedRuntime = project.files((java.util.concurrent.Callable<Object>) () ->
               runtimeCp.getFiles().stream()
-                .map(f -> f.isDirectory() ? f : project.zipTree(f))
+                .map(f -> f.isDirectory() ? f : archives.zipTree(f))
                 .collect(java.util.stream.Collectors.toList())
             );
 
