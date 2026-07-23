@@ -233,10 +233,13 @@ public final class VendorTasks {
             File vendorRoot = new File(project.getRootProject().getProjectDir(), "vendor");
             List<String> names = new ArrayList<>();
             if (lib == null) {
+                // only directories carrying a .vendored marker: anything else under
+                // vendor/ was not created by the vendor task and is not ours to delete
                 File[] dirs = vendorRoot.listFiles(File::isDirectory);
                 if (dirs != null)
                     for (File d : dirs)
-                        names.add(d.getName());
+                        if (new File(d, ".vendored").isFile())
+                            names.add(d.getName());
             } else {
                 names.add(resolveName(project, vendorRoot, lib));
             }
@@ -250,6 +253,9 @@ public final class VendorTasks {
                     getLogger().lifecycle("vendor/{} does not exist, skipping", name);
                     continue;
                 }
+                if (!new File(dir, ".vendored").isFile())
+                    throw new GradleException("vendor/" + name + " has no .vendored marker, so it was not "
+                        + "created by the vendor task; remove it manually if that is what you want.");
                 guardUnmodified(dir);
                 removeInclude(project, name);
                 deleteRecursively(dir.toPath());
@@ -545,7 +551,9 @@ public final class VendorTasks {
 
     /**
      * SHA-256 over the relative paths and contents of every regular file under {@code dir},
-     * except the {@code .vendored} marker itself (which stores this digest).
+     * except the {@code .vendored} marker itself (which stores this digest) and the
+     * {@code build/} and {@code .gradle/} directories, which Gradle populates when it
+     * builds the vendored sub-project.
      */
     static String digest(File dir) throws IOException {
         MessageDigest md;
@@ -558,6 +566,10 @@ public final class VendorTasks {
         try (Stream<Path> walk = Files.walk(root)) {
             List<Path> files = walk.filter(Files::isRegularFile)
                 .filter(p -> !p.getFileName().toString().equals(".vendored"))
+                .filter(p -> {
+                    Path rel = root.relativize(p);
+                    return !rel.startsWith("build") && !rel.startsWith(".gradle");
+                })
                 .sorted()
                 .toList();
             for (Path p : files) {

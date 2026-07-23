@@ -182,6 +182,34 @@ class VendorFunctionalTest {
     }
 
     @Test
+    void buildOutputsDoNotTripTheModificationGuard() throws Exception {
+        run("vendor", "--lib", "demo");
+        // simulate Gradle having built the vendored sub-project
+        writeFile("vendor/demo/build/classes/java/main/org/example/demo/Demo.class", "bytecode");
+        writeFile("vendor/demo/.gradle/config.bin", "state");
+
+        run("unvendor");
+        assertFalse(new File(projectDir, "vendor").exists(),
+            "build outputs inside the vendored project must not count as modifications");
+    }
+
+    @Test
+    void unvendorLeavesForeignDirectoriesAlone() throws Exception {
+        writeFile("vendor/handmade/notes.txt", "not created by the vendor task\n");
+        run("vendor", "--lib", "demo");
+
+        run("unvendor");
+        assertFalse(new File(projectDir, "vendor/demo").exists(), "vendored module should be removed");
+        assertTrue(new File(projectDir, "vendor/handmade/notes.txt").isFile(),
+            "directories without a .vendored marker must survive unvendor-all");
+
+        BuildResult result = runAndFail("unvendor", "--lib", "handmade");
+        assertTrue(result.getOutput().contains("no .vendored marker"),
+            "explicitly unvendoring a foreign directory should refuse. Output: " + result.getOutput());
+        assertTrue(new File(projectDir, "vendor/handmade/notes.txt").isFile());
+    }
+
+    @Test
     void unvendorRefusesWhenContentModified() throws Exception {
         run("vendor", "--lib", "demo");
         File patched = new File(projectDir, "vendor/demo/src/main/java/org/example/demo/Demo.java");
