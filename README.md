@@ -93,6 +93,48 @@ Any entry in `[versions]` whose value ends in `-SNAPSHOT` (or was previously pin
 is eligible — jPOS, jPOS-EE, or any in-house library. The latest build for each
 version is discovered from the project's declared Maven repositories.
 
+## Vendoring a dependency
+
+During certification or QA you sometimes need to patch a dependency locally — try a
+fix, add logging, work around a bug — before the change lands upstream. The `vendor`
+task extracts a library's `-sources.jar` into a `vendor/<name>/` sub-project and
+redirects every reference to that module (direct **and** transitive) to the local
+project via Gradle dependency substitution:
+
+```bash
+./gradlew vendor --lib jposee_txn   # <lib> is a key from gradle/libs.versions.toml [libraries]
+./gradlew unvendor --lib jposee_txn # remove one vendored module
+./gradlew unvendor                  # remove all vendored modules
+```
+
+`vendor` creates:
+
+```
+vendor/<name>/
+├── build.gradle          # java-library, group/version, repositories + dependencies from the POM
+├── .vendored             # marker: group:name:version
+└── src/main/{java,resources}/...   # extracted from the sources jar
+```
+
+and adds `include ':vendor:<name>'` to `settings.gradle`.
+
+Your `build.gradle` and `gradle/libs.versions.toml` are **never modified**: the version
+catalog entry stays exactly as-is, and `resolutionStrategy.dependencySubstitution`
+redirects the coordinate to the local project. Because the redirect happens at
+resolution time, transitive references to the same module are caught too, and vendored
+modules that depend on each other are wired together automatically.
+
+`unvendor` removes the `vendor/<name>` directory and its `include` line, restoring the
+build. To protect your local patches it refuses to run if the vendored content has been
+modified since it was vendored (a content digest is recorded in `.vendored`); remove
+the directory manually if you really mean to discard the changes. Re-sync your IDE
+(or just run any Gradle task) after vendoring/unvendoring so the substitution is
+picked up.
+
+Caveat: a `-sources.jar` contains source only — no tests, no annotation-processed or
+otherwise generated code. Modules that rely on code generation may need manual work in
+the vendored sub-project before they build.
+
 ## Per-target excludes
 
 If for some reason we want the plugin to exclude some files for a given target, we can add `<targetName>.exclude`.

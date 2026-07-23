@@ -97,6 +97,8 @@ public class JPOSPlugin implements Plugin<Project> {
             var buildTimestampTask = createBuildTimestampTask(project);
             var addGitRevisionTask = createGitRevisionTask(project);
             PinTasks.register(project);
+            VendorTasks.register(project);
+            VendorTasks.applySubstitutions(project);
 
             // the build timestamp and git revision task are dependencies to the 'class' task
             project.getTasks().named(JavaPlugin.CLASSES_TASK_NAME).configure(javaClasses -> {
