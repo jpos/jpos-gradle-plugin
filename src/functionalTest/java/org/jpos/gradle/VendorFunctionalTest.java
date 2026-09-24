@@ -160,6 +160,39 @@ class VendorFunctionalTest {
     }
 
     @Test
+    void otherVersionsOfVendoredModuleAreNotRedirected() throws Exception {
+        File oldDir = new File(projectDir, "maven-repo/org/example/demo/0.9.0");
+        oldDir.mkdirs();
+        Files.writeString(new File(oldDir, "demo-0.9.0.pom").toPath(), POM.replace("1.0.0", "0.9.0"));
+        writeJar(new File(oldDir, "demo-0.9.0.jar"),
+            Map.of("org/example/demo/marker.txt", "old".getBytes(StandardCharsets.UTF_8)));
+        writeFile("settings.gradle", settingsOriginal + "include ':legacy'\n");
+        writeFile("legacy/build.gradle",
+            "plugins {\n" +
+            "    id 'java'\n" +
+            "    id 'org.jpos.jposapp'\n" +
+            "}\n" +
+            "repositories {\n" +
+            "    maven { url = '" + new File(projectDir, "maven-repo").toURI() + "' }\n" +
+            "    mavenCentral()\n" +
+            "}\n" +
+            "dependencies {\n" +
+            "    implementation 'org.example:demo:0.9.0'\n" +
+            "}\n" +
+            "tasks.register('printRuntime') {\n" +
+            "    doLast { println 'RUNTIME=' + configurations.runtimeClasspath.files }\n" +
+            "}\n");
+
+        run("vendor", "--lib", "demo");
+
+        String root = runtimeLine(run(":printRuntime"));
+        assertTrue(root.contains("/vendor/demo/"), "1.0.0 should resolve to the vendored project. Got: " + root);
+        String legacy = runtimeLine(run(":legacy:printRuntime"));
+        assertTrue(legacy.contains("demo-0.9.0.jar"), "0.9.0 should still resolve from the repository. Got: " + legacy);
+        assertFalse(legacy.contains("/vendor/demo/"), "0.9.0 must not be redirected to the vendored 1.0.0. Got: " + legacy);
+    }
+
+    @Test
     void unvendorRestoresSettingsAndRemovesDirectory() throws Exception {
         run("vendor", "--lib", "demo");
         assertTrue(new File(projectDir, "vendor/demo").isDirectory());

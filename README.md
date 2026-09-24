@@ -124,6 +124,11 @@ redirects the coordinate to the local project. Because the redirect happens at
 resolution time, transitive references to the same module are caught too, and vendored
 modules that depend on each other are wired together automatically.
 
+Only the vendored **version** is redirected. A sub-project that deliberately requests a
+different version of the same module (e.g. one pinned to an older release) keeps
+resolving it from the repository. Bumping the catalog version away from the vendored one
+therefore stops the redirect; re-vendor if you want the local copy to follow.
+
 `unvendor` removes the `vendor/<name>` directory and its `include` line, restoring the
 build. To protect your local patches it refuses to run if the vendored content has been
 modified since it was vendored (a content digest is recorded in `.vendored`); remove
