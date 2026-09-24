@@ -22,6 +22,7 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.UntrackedTask;
@@ -129,9 +130,16 @@ public final class VendorTasks {
             }
             String group = ga[0];
             String name = ga[1];
+            // only the vendored version is redirected; other versions of the same module
+            // (e.g. a sub-project deliberately pinned to an older release) resolve normally
+            String version = ga.length > 2 ? ga[2] : null;
             project.getConfigurations().configureEach(cfg ->
-                cfg.getResolutionStrategy().dependencySubstitution(ds ->
-                    ds.substitute(ds.module(group + ":" + name)).using(ds.project(":vendor:" + dirName))));
+                cfg.getResolutionStrategy().dependencySubstitution(ds -> ds.all(dep -> {
+                    if (dep.getRequested() instanceof ModuleComponentSelector m
+                      && m.getGroup().equals(group) && m.getModule().equals(name)
+                      && (version == null || version.equals(m.getVersion())))
+                        dep.useTarget(ds.project(":vendor:" + dirName), "vendored");
+                })));
         }
     }
 
@@ -505,7 +513,12 @@ public final class VendorTasks {
         "            def marker = new File(d, '.vendored')\n" +
         "            if (marker.exists() && d.name != project.name) {\n" +
         "                def ga = marker.readLines()[0].tokenize(':')\n" +
-        "                substitute module(\"${ga[0]}:${ga[1]}\") using project(\":vendor:${d.name}\")\n" +
+        "                all { dep ->\n" +
+        "                    def r = dep.requested\n" +
+        "                    if (r instanceof ModuleComponentSelector && r.group == ga[0] && r.module == ga[1]\n" +
+        "                      && (ga.size() < 3 || r.version == ga[2]))\n" +
+        "                        dep.useTarget(project(\":vendor:${d.name}\"), 'vendored')\n" +
+        "                }\n" +
         "            }\n" +
         "        }\n" +
         "    }\n" +
