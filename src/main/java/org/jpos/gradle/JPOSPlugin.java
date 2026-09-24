@@ -527,8 +527,9 @@ public abstract class JPOSPlugin implements Plugin<Project> {
     private void configureJar(Project project, JPOSPluginExtension extension) {
         String projectName = project.getName();
         String projectVersion = String.valueOf(project.getVersion());
-        var classPath = project.getConfigurations()
-                .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME)
+        var runtimeClasspath = project.getConfigurations()
+                .getByName(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME);
+        var classPath = runtimeClasspath
                 .getIncoming().getFiles().getElements()
                 .map(files -> files.stream()
                         .map(f -> "lib/" + f.getAsFile().getName())
@@ -555,6 +556,9 @@ public abstract class JPOSPlugin implements Plugin<Project> {
             attr.put("Implementation-Version", projectVersion);
             attr.put("Main-Class", "org.jpos.q2.Q2");
             attr.put("Class-Path", classPath);
+            // manifest attributes are not task inputs, so the Class-Path provider's producers
+            // (e.g. project dependencies such as vendored modules) must be built first explicitly
+            task.dependsOn(runtimeClasspath);
         });
     }
 
