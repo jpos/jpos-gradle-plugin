@@ -20,6 +20,7 @@ package org.jpos.gradle;
 
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
+import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -157,6 +159,18 @@ class VendorFunctionalTest {
             "demo should now resolve to the local vendored project. Got: " + out);
         assertTrue(out.contains("commons-lang3"),
             "transitive dependency should still resolve. Got: " + out);
+    }
+
+    @Test
+    void jarBuildsVendoredModuleForItsClassPath() throws Exception {
+        run("vendor", "--lib", "demo");
+        BuildResult result = run("jar");
+        assertEquals(TaskOutcome.SUCCESS, result.task(":vendor:demo:jar").getOutcome(),
+            "the vendored jar must be built before the manifest Class-Path is computed");
+        try (JarFile jar = new JarFile(new File(projectDir, "build/libs/test-app-1.0.0.jar"))) {
+            String cp = jar.getManifest().getMainAttributes().getValue("Class-Path");
+            assertTrue(cp.contains("lib/demo-1.0.0.jar"), "Class-Path should list the vendored jar. Got: " + cp);
+        }
     }
 
     @Test
